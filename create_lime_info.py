@@ -30,7 +30,7 @@ def main(NT, NS, NC=3, ND=4, gauge_t=False, out_file='info.p'):
     
     with open(out_file, 'wb') as handle:
         pickle.dump(info_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        
+    
     return 0
     
     
