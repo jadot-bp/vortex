@@ -2,20 +2,33 @@ import lyncs_io as io
 import numpy as np
 
 class lattice:                                                             
-    def __init__(self, lattice, params, gauge_transform = None):                                        
+    def __init__(self, lattice, params, gauge_transform = None, is_conjugate=False):                                        
         self.lattice = lattice                                                  
         self.Nt, self.Ns, self.Nd, self.Nc = params        
         self.gauge_transform = gauge_transform
         
         self.shape = (self.Nt, self.Ns, self.Ns, self.Ns)
+        self._is_conjugate = is_conjugate
     
     def __repr__(self):
         return "lattice(lattice, params=(Nt,Ns,Nd,Nc), gauge_transform [optional])"
     
+    def transform(self):
+        """Performs the Fourier transform over the lattice."""
+               
+        self.lattice = np.fft.fftn(self.lattice,axes=(0,1,2,3))
+        self._is_conjugate = not self._is_conjugate
+        
+    def inverse_transform(self):
+        """Performs the inverse Fourier transform over the lattice."""
+               
+        self.lattice = np.fft.ifftn(self.lattice,axes=(0,1,2,3))
+        self._is_conjugate = not self._is_conjugate
+    
     def get_lattice(self):                                                       
         return self.lattice                                                     
                                                                                 
-    def get_link(self, coord, mu, apply_transform = False):                                              
+    def get_link(self, coord, mu, apply_transform = False):       
         pos = *coord, mu
         
         if apply_transform == True:
@@ -83,3 +96,65 @@ class lattice:
         P = np.matmul(P,U_mu_nu_dag)                                            
                                                                                 
         return P
+    
+    def evaluate_average_plaquette():
+        return None
+    
+    def get_A(self, coord, mu):
+        
+        if not self._is_conjugate:
+            # Fetch A = (U-U^\dag)_traceless/2i
+            U = self.get_link(coord)
+            
+            return (U-np.conj(U.T))/2j - np.trace(U-np.conj(U.T))/(2j*self.Nc)
+        
+        else:
+        
+            U = self.get_link(coord,mu)
+            U_neg = self.get_link(-np.asarray(coord),mu)
+            B = U - np.conj(U_neg.T)
+        
+            A = B - np.trace(B)/3
+        
+def gell_mann(number=None):
+    
+    if number != None:
+        assert isinstance(number,int)
+        assert number > 0 and number < 9
+    
+    g1 = np.asarray(([0,1,0],
+                     [1,0,0],
+                     [0,0,0]))
+    
+    g2 = np.asarray(([0,-1j,0],
+                     [1j,0,0],
+                     [0,0,0]))
+    
+    g3 = np.asarray(([1,0,0],
+                     [0,-1,0],
+                     [0,0,0]))
+    
+    g4 = np.asarray(([0,0,1],
+                     [0,0,0],
+                     [1,0,0]))
+    
+    g5 = np.asarray(([0,0,-1j],
+                     [0,0,0],
+                     [1j,0,0]))
+    
+    g6 = np.asarray(([0,0,0],
+                     [0,0,1],
+                     [0,1,0]))
+    
+    g7 = np.asarray(([0,0,0],
+                     [0,0,-1j],
+                     [0,1j,0]))
+    
+    g8 = 1/np.sqrt(3) * np.asarray(([1,0,1],
+                                    [0,1,0],
+                                    [0,0,-2]))
+    
+    if number == None:
+        return (g1, g2, g3, g4, g5, g6, g7, g8)
+    else:
+        return (g1, g2, g3, g4, g5, g6, g7, g8)[number]
