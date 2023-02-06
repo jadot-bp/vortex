@@ -70,43 +70,47 @@ class gauge_fields:
                                                                                 
         return P
 
-# Read in openQCD gauge field file                                              
-data = io.load("Gen2l_8x32n1",format='openqcd')                            
-print("plaquette:",io.head("Gen2l_8x32n1",format="openqcd")['plaq'])                        
-# Gauge files are in the shape (Nt,Ns,Ns,Ns,mu,color,color)
+def main():
+    # Read in openQCD gauge field file                                              
+    data = io.load("Gen2l_8x32n1",format='openqcd')                            
+    print("plaquette:",io.head("Gen2l_8x32n1",format="openqcd")['plaq'])                        
+    # Gauge files are in the shape (Nt,Ns,Ns,Ns,mu,color,color)
 
-#unit_field = np.zeros_like(data)
-#unit_field[:,:,:,:,:] = np.identity(3)
-#data = unit_field
+    #unit_field = np.zeros_like(data)
+    #unit_field[:,:,:,:,:] = np.identity(3)
+    #data = unit_field
 
-gf = gauge_fields(data, (8, 32, 4, 3))                                
-                                                                                
-start = time.time()                                                             
-                                                                                
-sumTrP = 0                                                                      
-nP = 0                                                                          
-n_sites = gf.Nt*gf.Ns**3                                    
-                                                                                
-#                tx        ty        tz        xy        xz        yz           
-for plane in [(1,1,0,0),(1,0,1,0),(1,0,0,1),(0,1,1,0),(0,1,0,1),(0,0,1,1)]:     
-    for t in range(gf.Nt):                                   
-        for i in range(gf.Ns):                               
-            for j in range(gf.Ns):                           
-                for k in range(gf.Ns):                       
-                                                                       
-                    P = gf.get_plaquette((t,i,j,k),np.argwhere(plane).flatten())
-                                                                                
-                    sumTrP += np.trace(P).real                                  
-                    nP += 1                                                     
-                                                                    
-end = time.time()                                                               
-                                                                                
-print(f"\nCalculated average plaquette in {end-start:.2f}s.")
+    gf = gauge_fields(data, (8, 32, 4, 3))                                
+                                                                                    
+    start = time.time()                                                             
+                                                                                    
+    sumTrP = 0                                                                      
+    nP = 0                                                                          
+    n_sites = gf.Nt*gf.Ns**3                                    
+                                                                                    
+    #                tx        ty        tz        xy        xz        yz           
+    for plane in [(1,1,0,0),(1,0,1,0),(1,0,0,1),(0,1,1,0),(0,1,0,1),(0,0,1,1)]:     
+        for t in range(gf.Nt):                                   
+            for i in range(gf.Ns):                               
+                for j in range(gf.Ns):                           
+                    for k in range(gf.Ns):                       
+                                                                           
+                        P = gf.get_plaquette((t,i,j,k),np.argwhere(plane).flatten())
+                                                                                    
+                        sumTrP += np.trace(P).real                                  
+                        nP += 1                                                     
+                                                                        
+    end = time.time()                                                               
+                                                                                    
+    print(f"\nCalculated average plaquette in {end-start:.2f}s.")
 
-calc_plaq = sumTrP/nP
-file_plaq = io.head("Gen2l_8x32n1",format='openqcd')['plaq']
-deviation = calc_plaq-file_plaq
+    calc_plaq = sumTrP/nP
+    file_plaq = io.head("Gen2l_8x32n1",format='openqcd')['plaq']
+    deviation = calc_plaq-file_plaq
 
-print("File Value:\t\t",calc_plaq)
-print("Calculated:\t",file_plaq)
-print("Deviation:\t",abs(calc_plaq-file_plaq))
+    print("File Value:\t\t",calc_plaq)
+    print("Calculated:\t",file_plaq)
+    print("Deviation:\t",abs(calc_plaq-file_plaq))
+
+if __name__ == "__main__":
+    main()
