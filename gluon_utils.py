@@ -1,32 +1,48 @@
 import lyncs_io as io
 import numpy as np
 
+import ctypes as c
+import numpy.ctypeslib as npc
+
+import os
+
 class lattice:                                                             
     def __init__(self, lattice, params, is_conjugate=False):                                        
-        self.lattice = lattice                                                  
+        self.lattice = np.copy(lattice)
         self.Nt, self.Ns, self.Nd, self.Nc = params        
         
+        
+        # Assert dimension checks
         if self.Nd != 4: raise Exception("Dimensions other than 4 not yet supported!")
         if self.Nc != 3: raise Exception("Only SU(3) currently supported.")
         
+        # Generate geometric parameters
         self.shape = tuple([self.Nt] + [self.Ns]*(self.Nd-1))
         self.V = np.prod(self.shape)
         
-        self._is_conjugate = is_conjugate
-    
         if np.prod(self.lattice.shape) != np.prod(self.shape)*self.Nc*self.Nc*self.Nd:
             raise Exception("Lattice shape mis-match!")
-    
+        
+        # Axis conjugation for Fourier-transformed lattices
+        
+        if isinstance(is_conjugate,bool):
+            self._is_conjugate = [is_conjugate]*self.Nd
+        elif isintance(is_conjugate,(tuple,list)):
+            self._is_conjugate = is_conjugate
+        else:
+            raise Exception("Unknown is_conjugate specified.")
     
     def __repr__(self):
-        return "lattice(lattice, params=(Nt,Ns,Nd,Nc), gauge_transform [optional])"
+        return "lattice(lattice, params=(Nt,Ns,Nd,Nc), is_conjugate[=False])"
     
     
-    def transform(self):
+    def transform(self, axes=(1,2,3)):
         """Performs the Fourier transform over the lattice."""
                
-        self.lattice = np.fft.fftn(self.lattice,axes=(1,2,3))
-        self._is_conjugate = not self._is_conjugate
+        self.lattice = np.fft.fftn(self.lattice,axes=axes)
+        
+        for ax in axes:
+            self._is_conjugate[ax] = not self._is_conjugate[ax]
         
     def step(self, pos, mu):
         """Calculates position one step in the mu direction from pos."""
@@ -43,18 +59,20 @@ class lattice:
         
         return new_pos
     
-    def inverse_transform(self):
+    def inverse_transform(self, axes=(1,2,3)):
         """Performs the inverse Fourier transform over the lattice."""
                
-        self.lattice = np.fft.ifftn(self.lattice,axes=(1,2,3))
-        self._is_conjugate = not self._is_conjugate
+        self.lattice = np.fft.ifftn(self.lattice,axes=axes)
+        
+        for ax in axes:
+            self._is_conjugate[ax] = not self._is_conjugate[ax]
     
-    def apply_gauge(self,gauge,undo=False):
+    def py_apply_gauge(self,gauge,undo=False):
         """Applies SU(N) gauge transformation to the lattice."""
         
         assert gauge.shape == (self.Nt, self.Ns, self.Ns, self.Ns, self.Nc, self.Nc)
         
-        assert not self._is_conjugate
+        assert not np.any(self._is_conjugate)
         
         for t in range(self.Nt):
             for i in range(self.Ns):
@@ -69,12 +87,35 @@ class lattice:
                             xmu = self.step(np.array((t,i,j,k)),mu)
                     
                             Gxmu = gauge[tuple(xmu)]
-                            
-                            if undo:
+                                                        
+                            if undo == True:
                                 self.lattice[t,i,j,k,mu] = np.matmul(np.conj(Gx.T),np.matmul(Ux,Gxmu))
                             else:
                                 self.lattice[t,i,j,k,mu] = np.matmul(Gx,np.matmul(Ux,np.conj(Gxmu.T)))
+                                
+    def apply_gauge(self,gauge):
+        """Applies SU(N) gauge transformation to the lattice."""
+    
+        script_dir = os.path.abspath(os.path.dirname(__file__))
+        lib_path = os.path.join(script_dir, "libgutils.so")
         
+        c.cdll.LoadLibrary(lib_path)
+    
+        LIB = c.CDLL(lib_path)
+    
+        LIB.gauge_transform.argtypes = [npc.ndpointer(np.complex128, ndim=None, flags="C_CONTIGUOUS"),
+                                        npc.ndpointer(np.complex128, ndim=None, flags="C_CONTIGUOUS"),
+                                        c.c_int,
+                                        c.c_int,
+                                        c.c_int,
+                                        c.c_int]
+        
+        LIB.gauge_transform.restype = None
+    
+        LIB.gauge_transform(self.lattice.astype('complex128'),gauge.astype('complex128'),self.Nt,self.Ns,self.Nd,self.Nc)
+        
+        return 0
+    
     def get_lattice(self):
         """Fetches the stored lattice."""
         return self.lattice                                                     
@@ -87,8 +128,8 @@ class lattice:
         
         if np.any(coord < 0) and not self._is_conjugate:
             raise IndexError("Negative coordinates not supported for non-conjugated lattices.")
-        if np.any(2*coord/np.asarray(self.shape) > 1) and self._is_conjugate:
-            raise IndexError("Coordinates greater in magnitude than half the lattice extent invalid for conjugated lattices.")
+        #if np.any(2*coord/np.asarray(self.shape) > 1) and self._is_conjugate:
+            #raise IndexError("Coordinates greater in magnitude than half the lattice extent invalid for conjugated lattices.")
         
         pos = np.array(([*coord, mu]))
         
@@ -165,15 +206,14 @@ class lattice:
         
         if pattern == "laplace":
             raise Exception("Laplace gauge condition not yet supported.")
-        if self._is_conjugate == True:
+        if np.any(self._is_conjugate) == True:
             raise Exception("Conjugate lattice divergence not yet supported.")
     
         divA2 = 0       
         for t in range(self.Nt):
             for i in range(self.Ns):
                 for j in range(self.Ns):
-                    for k in range(self.Ns):
-                        
+                    for k in range(self.Ns):      
                         divA = 0
                         for mu in [1,2,3]:
                             x = np.array([t,i,j,k])
@@ -185,7 +225,7 @@ class lattice:
                             
                         divA2 += np.sum(decompose_su3(divA)**2)
                             
-        return divA2/np.prod(self.shape)
+        return divA2/self.V
     
     def get_qhat(self,coord,mu,a=1):
         """Calculates q^_\mu corresponding to coord."""
@@ -198,64 +238,19 @@ class lattice:
         
         coord = np.asarray(coord)
         
-        if not self._is_conjugate:
+        if not self._is_conjugate[mu]:
             
             # Fetch A = (U-U^\dag)_traceless/2i
             U = self.get_link(coord,mu)
             
-            U_Udag = np.zeros((3,3),dtype='complex128')
-            
-            tr = 0
-            for i in range(3):
-                tr += 2j*U[i,i].imag
-                U_Udag[i,i] = 2j*U[i,i].imag
-                
-            tr /= self.Ns
-            
-            for i in range(3):
-                U_Udag[i,i] -= tr
-                
-            for i in range(3):
-                for j in range(3):
-                    if i!=j:
-                        U_Udag[i,j] = U[i,j]-np.conj(U[j,i])
-                        U_Udag[j,i] = U[j,i]-np.conj(U[i,j])
-            
-            #return (U-np.conj(U.T) - 2j*np.trace(U)/(self.Nc))/2j
-            return -U_Udag/2j
+            return tracelessHermConjSubtraction(U,Nc=self.Nc)/2j
         
         else:
         
             U = self.get_link(coord,mu)
             U_neg = self.get_link(-coord,mu)
-            B = U - np.conj(U_neg.T)
         
-            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * (B - np.trace(B)/self.Nc)
-            
-    def evaluate_e2(self):
-        """Calculates the gauge-fixing proxy e2 from Jesuel Marques' gauge-fixing code."""
-        
-        e2 = 0
-        
-        for t in range(self.Nt):
-            for i in range(self.Ns):
-                for j in range(self.Ns):
-                    for k in range(self.Ns):
-                        
-                        divA = 0
-                        for mu in [1,2,3]:
-                            x = np.array([t,i,j,k])
-                            
-                            A_backward = self.get_A(self.step(x,-mu),mu)
-                            A = self.get_A(x,mu)
-                            
-                            divA += (A-A_backward)
-                           
-                        divA_components = decompose_su3(divA)
-                            
-                        e2 += np.sum(np.asarray(divA_components)**2)
-        
-        return e2/np.prod(self.shape)
+            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * tracelessHermConjSubtraction(U,Udag=U_neg, Nc=self.Nc)
         
         
 def gell_mann(number=None):
@@ -315,7 +310,15 @@ def decompose_su3(matrix):
     
     return np.array((m1,m2,m3,m4,m5,m6,m7,m8))
     
+def tracelessHermConjSubtraction(U,Udag=None,Nc=3):
+    """Calculates the traceless Hermitian conjugate subtraction of U: {U-U^\dag}-tr."""   
     
-        
+    if np.shape(Udag) != (Nc, Nc):
+        if Udag == None:
+            Udag = np.conj(U.T)
+        else:
+            raise Exception('Udag (if specified) must be a matrix of shape (Nc,Nc).')
     
-    
+    U_Udag_trcless = (U - Udag) - np.trace(U - Udag)*np.identity(Nc)/Nc
+                
+    return U_Udag_trcless
