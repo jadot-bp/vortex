@@ -126,7 +126,7 @@ class lattice:
         
         coord = np.asarray(coord)
         
-        if np.any(coord < 0) and not self._is_conjugate:
+        if np.any(coord < 0) and not self._is_conjugate[mu]:
             raise IndexError("Negative coordinates not supported for non-conjugated lattices.")
         #if np.any(2*coord/np.asarray(self.shape) > 1) and self._is_conjugate:
             #raise IndexError("Coordinates greater in magnitude than half the lattice extent invalid for conjugated lattices.")
@@ -250,7 +250,9 @@ class lattice:
             U = self.get_link(coord,mu)
             U_neg = self.get_link(-coord,mu)
         
-            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * tracelessHermConjSubtraction(U,Udag=U_neg, Nc=self.Nc)
+            B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
+        
+            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * B_traceless
         
         
 def gell_mann(number=None):
