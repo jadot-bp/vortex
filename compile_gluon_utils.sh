@@ -1,3 +1,3 @@
-gcc -fpic -c gluon_utils.c
-gcc -shared -o libgutils.so gluon_utils.o
+gcc -fpic -c gluon_utils.c -O3
+gcc -shared -o libgutils.so gluon_utils.o -O3
 
