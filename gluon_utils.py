@@ -8,7 +8,7 @@ import os
 
 class lattice:                                                             
     def __init__(self, lattice, params, is_conjugate=False):                                        
-        self.lattice = np.copy(lattice)
+        self.lattice = lattice.astype("complex128")
         self.Nt, self.Ns, self.Nd, self.Nc = params        
         
         
@@ -112,7 +112,7 @@ class lattice:
         
         LIB.gauge_transform.restype = None
     
-        LIB.gauge_transform(self.lattice.astype('complex128'),gauge.astype('complex128'),self.Nt,self.Ns,self.Nd,self.Nc)
+        LIB.gauge_transform(self.lattice,gauge.astype('complex128'),self.Nt,self.Ns,self.Nd,self.Nc)
         
         return 0
     
@@ -250,7 +250,8 @@ class lattice:
             U = self.get_link(coord,mu)
             U_neg = self.get_link(-coord,mu)
         
-            B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
+            #B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
+            B_traceless = U-np.conj(U_neg.T) - np.trace(U-np.conj(U_neg.T))/self.Nc
         
             return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * B_traceless
         
