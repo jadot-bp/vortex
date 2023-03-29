@@ -250,8 +250,8 @@ class lattice:
             U = self.get_link(coord,mu)
             U_neg = self.get_link(-coord,mu)
         
-            #B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
-            B_traceless = U-np.conj(U_neg.T) - np.trace(U-np.conj(U_neg.T))/self.Nc
+            B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
+            #B_traceless = U-np.conj(U_neg.T) - np.trace(U-np.conj(U_neg.T))/self.Nc
         
             return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * B_traceless
         
