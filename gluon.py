@@ -10,7 +10,7 @@ import time
 import itertools
 import os
 
-import matplotlib.pyplot as plt
+import pandas as pd
 
 import gluon_utils as gu
 
@@ -38,7 +38,7 @@ def unique_permute(coord):
             
     return np.asarray(unique_items)
     
-def spatial(Nt,nc,t0,check_divA=False):   
+def spatial(Nt,nc,t0,check_divA=False,save_prop=True):   
     D_results = []
 
     available_transforms = []
@@ -55,61 +55,80 @@ def spatial(Nt,nc,t0,check_divA=False):
         input_file = f"../gauge_confs/samples/{Nt}x32/{selection[n]}"
         gauge_file = f"../gauge_confs/transforms/{Nt}x32/{selection[n]}.gauge.lime"
 
-        data = io.load(input_file, format="openqcd")
-        gauge = io.load(gauge_file, format="lime")
+        gauge_output = f"../gauge_confs/props/Nt{Nt}/{selection[n]}_t0_{t0}.prop"
+        
+        if os.path.exists(gauge_output):
+            print("Cached file found. Loading...")
+            prop = pd.read_csv(gauge_output).values[:]
+            q = prop[:,:4]
+            results = prop[:,4]
+            D_results.append(results)       
+        else:
+            print("No cached file found. Generating...")
+        
+            data = io.load(input_file, format="openqcd")
+            gauge = io.load(gauge_file, format="lime")
 
-        gf = gu.lattice(data,(Nt,32,4,3))
+            gf = gu.lattice(data,(Nt,32,4,3))
                 
-        # Apply gauge transformation
-        gf.apply_gauge(gauge)
+            # Apply gauge transformation
+            gf.apply_gauge(gauge)
 
-        if check_divA:
-            # check divA
-            print("div.A:",gf.evaluate_divA())
+            if check_divA:
+                # check divA
+                print("div.A:",gf.evaluate_divA())
         
-        # Transform to Fourier space
-        gf.transform(axes=(0,1,2,3))
+            # Transform to Fourier space
+            gf.transform(axes=(0,1,2,3))
 
-        results = []
-        q = []
+            results = []
+            q = []
         
-        # Loop over t,qx,qy,qz
-        start = time.time()
-        for t in [t0]:
-            for qx in range(gf.shape[1]//4):
-                for qy in range(qx,gf.shape[2]//4):
-                    for qz in range(qy,gf.shape[3]//4):
-                        D_sum = 0
+            # Loop over t,qx,qy,qz
+            for t in [t0]:
+                for qx in range(gf.shape[1]//4):
+                    for qy in range(qx,gf.shape[2]//4):
+                        for qz in range(qy,gf.shape[3]//4):
+                            D_sum = 0
                         
-                        z3_coords = unique_permute([qx,qy,qz])
+                            z3_coords = unique_permute([qx,qy,qz])
                         
-                        for coord in z3_coords:
-                            for mu in [0,1,2,3]:
+                            for coord in z3_coords:
+                                for mu in [0,1,2,3]:
 
-                                # Decompose A in terms of Gell-Mann components
-                                A = gu.decompose_su3(gf.get_A((t,coord[0],coord[1],coord[2]),mu))
-                                A_neg = gu.decompose_su3(gf.get_A((-t,-coord[0],-coord[1],-coord[2]),mu))
+                                    # Decompose A in terms of Gell-Mann components
+                                    A = gu.decompose_su3(gf.get_A((t,coord[0],coord[1],coord[2]),mu))
+                                    A_neg = gu.decompose_su3(gf.get_A((-t,-coord[0],-coord[1],-coord[2]),mu))
 
-                                D_sum += np.dot(A,A_neg)
+                                    D_sum += np.dot(A,A_neg)
 
-                        #results.append([[gf.get_qhat((t,qx,qy,qz),mu) for mu in [0,1,2,3]],D_sum])
-                        q.append([t,qx,qy,qz])
-                        results.append(D_sum/len(z3_coords))
-        end = time.time()
+                            #results.append([[gf.get_qhat((t,qx,qy,qz),mu) for mu in [0,1,2,3]],D_sum])
+                            q.append([t,qx,qy,qz])
+                            results.append(D_sum/len(z3_coords))
+        
+            q = np.asarray(q)
+            results = np.asarray(results)
 
-        results_cleaned = []
+            results_cleaned = []
+            
+            for pos,result in enumerate(results):
+                if np.all(np.asarray(q)[pos] == 0):
+                    results_cleaned.append(result*2/((gf.Nc**2-1)*gf.Nd*gf.V))
+                else:
+                    #results_cleaned.append([np.linalg.norm(q_improved(result[0])),result[1]*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V)])
+                    results_cleaned.append(result*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V))
 
-        for pos,result in enumerate(results):
-            if np.all(np.asarray(q)[pos] == 0):
-                results_cleaned.append(result*2/((gf.Nc**2-1)*gf.Nd*gf.V))
-            else:
-                #results_cleaned.append([np.linalg.norm(q_improved(result[0])),result[1]*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V)])
-                results_cleaned.append(result*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V))
-
-        results_cleaned = np.asarray(results_cleaned)
-        D_results.append(results_cleaned)       
-        print(f"{input_file} done.")
-
+            results_cleaned = np.asarray(results_cleaned)
+            D_results.append(results_cleaned)       
+            print(f"{input_file} done.")
+        
+            # Save propagator values
+            if save_prop:
+                print("Saving propagator...")
+                out_df = pd.DataFrame(np.hstack([q.real,results_cleaned.reshape(-1,1).real]))
+            
+                out_df.to_csv(gauge_output,index=None,header=['qt','qx','qy','qz','D(q)_s'])
+        
     return q, D_results
         
 if __name__ == "__main__":
