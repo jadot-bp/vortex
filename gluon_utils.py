@@ -126,8 +126,8 @@ class lattice:
         
         coord = np.asarray(coord)
         
-        if np.any(coord < 0) and not self._is_conjugate[mu]:
-            raise IndexError("Negative coordinates not supported for non-conjugated lattices.")
+        #if np.any(coord < 0) and not self._is_conjugate[mu]:
+            #raise IndexError("Negative coordinates not supported for non-conjugated lattices.")
         #if np.any(2*coord/np.asarray(self.shape) > 1) and self._is_conjugate:
             #raise IndexError("Coordinates greater in magnitude than half the lattice extent invalid for conjugated lattices.")
         
@@ -199,7 +199,7 @@ class lattice:
         
         return tP/(3*np.prod(self.shape)), sP/(3*np.prod(self.shape))
     
-    def evaluate_divA(self,pattern="coulomb"):
+    def py_evaluate_divA(self,pattern="coulomb"):
         """Evaluates the gauge fixing condition div.A=0 over the lattice."""
         
         assert pattern in ["coulomb", "laplace"]
