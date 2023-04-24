@@ -38,7 +38,7 @@ def unique_permute(coord):
             
     return np.asarray(unique_items)
     
-def spatial(Nt,nc,t0,check_divA=False,save_prop=True):   
+def spatial(Nt,nc,t0,check_divA=False,z3_avg=True,rand_selection=True,save_prop=True):   
     D_results = []
 
     available_transforms = []
@@ -48,7 +48,10 @@ def spatial(Nt,nc,t0,check_divA=False,save_prop=True):
             base_name = file.rstrip(".gauge.lime")
             available_transforms.append(base_name)
             
-    selection = np.random.choice(available_transforms,size=nc,replace=False)
+    if rand_selection:
+        selection = np.random.choice(available_transforms,size=nc,replace=False)
+    else:
+        selection = np.arange(1,nc+1)
     
     for n in range(nc):
         #input_file = "Gen2l_64x32n1.lime"
@@ -85,13 +88,22 @@ def spatial(Nt,nc,t0,check_divA=False,save_prop=True):
             q = []
         
             # Loop over t,qx,qy,qz
+
+            # Set lower bounds for Z3 averaging
+            lqy = 0
+            lqz = 0
+
             for t in [t0]:
                 for qx in range(gf.shape[1]//4):
                     for qy in range(qx,gf.shape[2]//4):
                         for qz in range(qy,gf.shape[3]//4):
                             D_sum = 0
-                        
-                            z3_coords = unique_permute([qx,qy,qz])
+                            
+                            # Fetch equivalent coordinates if Z3 averaging
+                            if z3_avg:
+                                z3_coords = unique_permute([qx,qy,qz])
+                            else:
+                                z3_coords = [[qx,qy,qz]]
                         
                             for coord in z3_coords:
                                 for mu in [0,1,2,3]:
@@ -105,6 +117,11 @@ def spatial(Nt,nc,t0,check_divA=False,save_prop=True):
                             #results.append([[gf.get_qhat((t,qx,qy,qz),mu) for mu in [0,1,2,3]],D_sum])
                             q.append([t,qx,qy,qz])
                             results.append(D_sum/len(z3_coords))
+
+                            if z3_avg:
+                                lqz = qy
+                        if z3_avg:
+                            lqy = qx
         
             q = np.asarray(q)
             results = np.asarray(results)
