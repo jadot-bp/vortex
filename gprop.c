@@ -52,8 +52,8 @@ struct gluon_field {
     double complex *A;
 };
 
-double complex gluon_prop(struct gluon_field *gf, int mu, int nu, int a, int b, int t, int y[4]){
-    // Calculate the gluon propagator D^ab_\mu\nu = <A^a_\mu(x)A^b_\nu(x+y)>/V
+double complex pos_space_gluon_prop(struct gluon_field *gf, int mu, int nu, int a, int b, int t, int y[4]){
+    // Calculate the position space gluon propagator D^ab_\mu\nu = <A^a_\mu(x)A^b_\nu(x+y)>/V
     
     int Nt = gf -> Nt;
     int Ns = gf -> Ns;
@@ -116,8 +116,8 @@ double complex gluon_prop(struct gluon_field *gf, int mu, int nu, int a, int b, 
     return runsum/(Nt*Ns*Ns*Ns);
 }
 
-void calc_scalar_D(struct gluon_field *gf, int t, double complex D[]){
-    // Calculate the scalar propagator D
+void calc_pos_space_scalar_D(struct gluon_field *gf, int t, double complex D[]){
+    // Calculate the scalar propagator D in position space
     
     const int Nt = gf -> Nt;
     const int Ns = gf -> Ns;
@@ -149,16 +149,4 @@ void calc_scalar_D(struct gluon_field *gf, int t, double complex D[]){
             }
         }
     }
-}
-
-int pragma_test(void){
-     
-    int N=0;
-    
-    #pragma omp parallel reduction(+:N) num_threads(4)
-    {
-        N += 1;
-    }
-    
-    return N;
 }
