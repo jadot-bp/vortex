@@ -36,7 +36,7 @@ class lattice:
         return "lattice(lattice, params=(Nt,Ns,Nd,Nc), is_conjugate[=False])"
     
     
-    def transform(self, axes=(1,2,3)):
+    def transform(self, axes=(0,1,2,3)):
         """Performs the Fourier transform over the lattice."""
                
         self.lattice = np.fft.fftn(self.lattice,axes=axes)
@@ -125,12 +125,7 @@ class lattice:
         """Fetches the link field in the mu-direction at coord."""
         
         coord = np.asarray(coord)
-        
-        #if np.any(coord < 0) and not self._is_conjugate[mu]:
-            #raise IndexError("Negative coordinates not supported for non-conjugated lattices.")
-        #if np.any(2*coord/np.asarray(self.shape) > 1) and self._is_conjugate:
-            #raise IndexError("Coordinates greater in magnitude than half the lattice extent invalid for conjugated lattices.")
-        
+                
         pos = np.array(([*coord, mu]))
         
         return self.lattice[tuple(pos)]
@@ -234,7 +229,7 @@ class lattice:
         
         return (2*np.pi/a)*(coord[mu]/self.shape[mu])
     
-    def get_A(self, coord, mu, a=1):
+    def get_A(self, coord, mu, a=1, g0=1):
         
         coord = np.asarray(coord)
         
@@ -253,7 +248,7 @@ class lattice:
             B_traceless = tracelessHermConjSubtraction(U,Udag=np.conj(U_neg.T), Nc=self.Nc)
             #B_traceless = U-np.conj(U_neg.T) - np.trace(U-np.conj(U_neg.T))/self.Nc
         
-            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a) * B_traceless
+            return np.exp(-0.5j*a*self.get_qhat(coord, mu))/(2j*a*g0) * B_traceless
         
         
 def gell_mann(number=None):
@@ -322,6 +317,6 @@ def tracelessHermConjSubtraction(U,Udag=None,Nc=3):
         else:
             raise Exception('Udag (if specified) must be a matrix of shape (Nc,Nc).')
     
-    U_Udag_trcless = (U - Udag) - np.trace(U - Udag)*np.identity(Nc)/Nc
+    U_Udag_trcless = (U - Udag) - np.trace(U - Udag)*np.identity(Nc)/Nc # Confirmed correct format by divA tests
                 
     return U_Udag_trcless
