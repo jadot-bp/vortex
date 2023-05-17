@@ -95,7 +95,7 @@ def py_spatial(Nt,Nc,t0,check_divA=False,calculate_z3=False,return_z3=False,rand
     if rand_selection:
         selection = np.random.choice(available_transforms,size=Nc,replace=False)
     else:
-        selection = np.arange(1,Nc+1)
+        selection = rand_selection
     
     for n in range(Nc):
         #input_file = "Gen2l_64x32n1.lime"
@@ -243,7 +243,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
 
     Parameters:
         Nt: Temporal extent
-        Nc: Number of gauge configurations to sample
+        Nconf: Number of gauge configurations to sample
 
     Optional Parameters:
         check_divA [False]: Calculate the value of |div(A)|^2 for each configuration
@@ -255,10 +255,18 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
         D_results: Array of propagator values
     """
     
+    # Presets
+    
     Ns = 32
     Nd = 4
     Nc = 3
-
+    
+    gauge_path = f"/home/ben/Work/gauge_confs/transforms"
+    conf_path = f"/home/ben/Work/gauge_confs"
+    prop_path = f"/home/ben/Work/gauge_confs/props"
+    
+    # Load gprop library
+    
     script_dir = os.path.abspath(os.path.dirname(__file__))
     lib_path = os.path.join(script_dir, "libgprop.so")
 
@@ -276,7 +284,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
 
     available_transforms = []
     
-    for file in os.listdir(f"../gauge_confs/transforms/{Nt}x32"):
+    for file in os.listdir(f"{gauge_path}/{Nt}x32"):
         if file.endswith(".gauge.lime"):
             base_name = file.rstrip(".gauge.lime")
             available_transforms.append(base_name)
@@ -286,6 +294,12 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     else:
         selection = rand_selection
     
+    # Check Nconf bound
+    
+    if Nconf > len(available_transforms):
+        print(f"Defaulting to max Nconf={len(available_transforms)}")
+        Nconf = len(available_transforms)
+    
     # Generate q array:
     
     qt = np.arange(Nt//2) # Temporal coordinates
@@ -294,11 +308,11 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     q = np.asarray(list(itertools.product(qt,qs,qs,qs)))
     
     for n in range(Nconf):
-        input_file = f"../gauge_confs/samples/{Nt}x32/{selection[n]}"
-        gauge_file = f"../gauge_confs/transforms/{Nt}x32/{selection[n]}.gauge.lime"
+        input_file = f"{conf_path}/{Nt}x32/{selection[n]}"
+        gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
 
-        prop_output = f"../gauge_confs/props/Nt{Nt}/{selection[n]}.prop"
-        z3_output = f"../gauge_confs/props/Nt{Nt}/{selection[n]}.prop.z3"
+        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop"
+        z3_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop.z3"
         
         file_found = False
         
