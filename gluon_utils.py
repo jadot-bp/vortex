@@ -197,10 +197,16 @@ class lattice:
     def py_evaluate_divA(self,pattern="coulomb"):
         """Evaluates the gauge fixing condition div.A=0 over the lattice."""
         
-        assert pattern in ["coulomb", "laplace"]
+        assert pattern in ["coulomb", "landau"]
         
-        if pattern == "laplace":
-            raise Exception("Laplace gauge condition not yet supported.")
+        if pattern == "landau":
+            mu_coords = [0,1,2,3]
+            xi = 1/(3.444*4.3) # Lattice anisotropy multiplied by bare gauge anisotropy
+            
+        elif pattern == "coulomb":
+            mu_coords = [1,2,3]
+            xi = 1.0
+            
         if np.any(self._is_conjugate) == True:
             raise Exception("Conjugate lattice divergence not yet supported.")
     
@@ -210,13 +216,16 @@ class lattice:
                 for j in range(self.Ns):
                     for k in range(self.Ns):      
                         divA = 0
-                        for mu in [1,2,3]:
+                        for mu in mu_coords:
                             x = np.array([t,i,j,k])
                             
                             A_backward = self.get_A(self.step(x,-mu),mu)
                             A = self.get_A(x,mu)
                             
-                            divA += A-A_backward
+                            if mu == 0:
+                                divA += xi*(A-A_backward)
+                            else:
+                                divA += A-A_backward
                             
                         divA2 += np.sum(decompose_su3(divA)**2)
                             
