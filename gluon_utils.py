@@ -44,16 +44,11 @@ class lattice:
         for ax in axes:
             self._is_conjugate[ax] = not self._is_conjugate[ax]
         
-    def step(self, pos, mu):
+    def step(self, pos, mu, dirn=1):
         """Calculates position one step in the mu direction from pos."""
         
         new_pos = np.asarray(pos).copy() ## Explicitly copy position array value
-        dirn = 1
-        
-        if mu < 0:
-            mu = abs(mu)
-            dirn = -1
-        
+                
         new_pos[mu] += dirn
         new_pos[mu] %= self.shape[mu]  #Enforce periodic boundary conditions
         
@@ -139,7 +134,7 @@ class lattice:
                                                                                 
         returns: plaquette matrix                                               
         """                                                                                                                             
-        if self._is_conjugate:
+        if np.any(self._is_conjugate):
             raise Exception("Plaquette calculation not yet supported for conjugate lattices.")
                                                                                 
         mu, nu = plane                                                          
@@ -194,7 +189,7 @@ class lattice:
         
         return tP/(3*np.prod(self.shape)), sP/(3*np.prod(self.shape))
     
-    def py_evaluate_divA(self,pattern="coulomb"):
+    def py_evaluate_divA(self,pattern="coulomb",T_INDX=0):
         """Evaluates the gauge fixing condition div.A=0 over the lattice."""
         
         assert pattern in ["coulomb", "landau"]
@@ -219,10 +214,10 @@ class lattice:
                         for mu in mu_coords:
                             x = np.array([t,i,j,k])
                             
-                            A_backward = self.get_A(self.step(x,-mu),mu)
+                            A_backward = self.get_A(self.step(x,mu,dirn=-1),mu)
                             A = self.get_A(x,mu)
                             
-                            if mu == 0:
+                            if mu == T_INDX:
                                 divA += xi*(A-A_backward)
                             else:
                                 divA += A-A_backward
@@ -230,6 +225,39 @@ class lattice:
                         divA2 += np.sum(decompose_su3(divA)**2)
                             
         return divA2/self.V
+    
+    def py_evaluate_F(self,pattern="coulomb",T_INDX=0):
+        """Evaluates the gauge fixing condition F[U] over the lattice."""
+        
+        assert pattern in ["coulomb", "landau"]
+        
+        if pattern == "landau":
+            mu_coords = [0,1,2,3]
+            xi = 1/(3.444*4.3) # Lattice anisotropy multiplied by bare gauge anisotropy
+            
+        elif pattern == "coulomb":
+            mu_coords = [1,2,3]
+            xi = 1.0
+            
+        if np.any(self._is_conjugate) == True:
+            raise Exception("Conjugate lattice divergence not yet supported.")
+    
+        F = 0       
+        for t in range(self.Nt):
+            for i in range(self.Ns):
+                for j in range(self.Ns):
+                    for k in range(self.Ns):      
+                        for mu in mu_coords:
+                            x = np.array([t,i,j,k])
+                            
+                            U = self.get_link(x,mu)
+                            
+                            if mu == T_INDX:
+                                F += xi*np.real(np.trace(U))
+                            else:
+                                F += np.real(np.trace(U))
+                            
+        return F/(self.V*self.Nc*(self.Nd-1))
     
     def get_qhat(self,coord,mu,a=1):
         """Calculates q^_\mu corresponding to coord."""
