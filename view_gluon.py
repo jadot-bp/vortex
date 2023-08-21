@@ -13,10 +13,24 @@ import pandas as pd
 import gluon_utils as gu
 import gluon
 
+import gvar as gv
+
+__XI_R__ = 3.453
+__XI_0__ = 4.3
+
+def q_wilson(q_hat, a=1):
+    """Calculate the momentum correction corresponding to the Wilson action."""
+    
+    return (2/a)*np.sin(np.asarray(q_hat)*a/2)
+
+def q_improved(q_hat, a=1):
+    """Calculate the momentum correction corresponding to the improved
+    action."""
+
+    return (2/a)*np.sqrt( np.sin(np.asarray(q_hat)*a/2)**2 + (1/3)*np.sin(np.asarray(q_hat)*a/2)**4 )
 
 def unique_permute(coord):
     """Return all cyclic permutations of coord."""
-    
     
     items = list(itertools.permutations(coord))
    
@@ -28,127 +42,204 @@ def unique_permute(coord):
             
     return np.asarray(unique_items)
 
-def get_data(Nt,Z3_avg=False,cylinder=False,cone=False,t_avg=True,c_radius=None,c_angle=None, return_info=False):
-    """
-    Fetch and process saved gluon propagator data.
+def get_Z3_partners(coords):
+    """Get all Z3 partners of a set of coords. Coords which are a
+       partner of a previous coord return no partners."""
     
-    Args:
-        Nt: Temporal extent of the lattice
-        Z_3 [False] : Perform Z_3 averaging of the spatial indices
-        cylinder [False]: Perform cylinder cut
-        cone [False]: Perform cone cut
-        t_avg [False]: Perform averaging over time slices
-        c_radius [None] : Radius of the cylinder cut
-        return_info [False]: Return info such as bcd signature
-    """
+    z3_partners = [] # List of indices of Z3 partners
+    z3_sig = [] # Mask (signature) of Z3 coordinates
     
-    Ns = 32
+    tmp_coords = np.copy(coords)
     
-    prop_loc = f"/home/ben/Work/gauge_confs/props/Nt{Nt}"
+    while len(tmp_coords) > 0:
+        # Get Z3 permutations of the coordinate
+        z3_coords = unique_permute(tmp_coords[0])
+        
+        # Calculate the indices of the Z3 permutations in the temporary list
+        z3_tmp_ids = np.argwhere([np.any(np.all(c_ == z3_coords, axis=1)) for c_ in tmp_coords]).flatten()
+        
+        # Calculate the indices of the Z3 permutations in the coordinate list
+        z3_coord_ids = np.argwhere([np.any(np.all(c_ == z3_coords, axis=1)) for c_ in coords]).flatten()
+        z3_partners.append(z3_coord_ids)
+        
+        # Store the index of the permuted (primary) coordinate
+        z3_sig.append(z3_coord_ids[0])
+        
+        # Remove coordinate and permutations from temporary list and continue
+        tmp_coords = np.delete(tmp_coords, z3_tmp_ids, axis=0)
     
-    # Get list of file names which satisfy Z_3 and timeslice selections
-    prop_names = []
+    return z3_partners, z3_sig
+        
+class propagator:
+    def __init__(self,Nt,n_samples='all',gtype="coulomb",path_to_props=None):
+        """Fetch saved gluon propagator data"""
+        
+        self.Nt = Nt
+        self.Ns = 32
+        self.shape = np.asarray([self.Nt,self.Ns,self.Ns,self.Ns])
+        self.gtype = gtype
+        
+        assert gtype in ['coulomb', 'landau']
+        
+        if path_to_props == None:
+            path_to_props = f"/home/ben/Work/gauge_confs/props/Nt{Nt}"
 
-    for prop in os.listdir(prop_loc):
-        if prop.endswith('.prop'):
-            prop_names.append(prop)
+        prop_names = []
+
+        for prop in os.listdir(path_to_props):
+            if gtype == 'coulomb' and prop.endswith('.prop'):
+                prop_names.append(prop)
+            elif gtype == 'landau' and prop.endswith('.prop.landau'):
+                prop_names.append(prop)
+
+        if len(prop_names) < 1:
+            raise Exception(f"No propagator files found for gtype: {gtype}.")
+
+        if isinstance(n_samples, list):
+            suffix = ".landau" if gtype == "landau" else ""
+            prop_names = [f"{i}.prop{suffix}" for i in n_samples]
+        elif n_samples != 'all':
+            prop_names = np.random.choice(prop_names, size=n_samples, replace=True)
+
+        tmp_D = []
+        for prop in prop_names:
+            data = pd.read_csv(f"{path_to_props}/{prop}").values[:]
+            q_coord = data[:,:4]
+            D_prop = data[:,4]
+            tmp_D.append(D_prop)
+
+        D = gv.gvar(np.mean(tmp_D,axis=0), np.std(tmp_D,axis=0))
+
+        self.q = q_coord
+        self.D = D
+        self.prop_info = prop_names
+
+    def calculate_gz(self, q, D):
+        """Calculate the g-factor for the Coulomb static propagator."""
+
+    def cone_cut(self, radius, q=None, D=None,  angle=np.pi/2):
+        """Perform a cone cut along the BCD axis of the data."""
+
+        if q == None:
+            q = self.q
+        if D == None:
+            D = self.D
+        
+        if q.shape[1] == 4 and self.gtype in ['coulomb','landau']:
+
+            cone_mask = []
+
+            BCD_norm = np.ones(3)/np.linalg.norm(np.ones(3))
+
+            N_qt = len(q[:,0] == np.unique(q[:,0])[0]) # Calculate number of q_t slices
+
+            for coord in q[:N_qt,1:]:
+                if np.all(coord == coord[0]): # Handle on-diagonal coordinates
+                    r = 0
+                    theta = 0
+                else:
+                    q_norm = np.linalg.norm(coord)
+                    theta = np.arccos(np.dot(BCD_norm,coord)/q_norm)
+
+                    r = q_norm * np.sin(theta)
+                cone_mask.append(r <= radius and theta<angle)
+
+            cone_mask *= len(q)//N_qt
+
+            cone_mask = np.asarray(cone_mask, dtype=bool)
+
+            self.q = q[cone_mask]
+            self.D = D[cone_mask]
             
-    # Get D and q
-    D = []
+            return q[cone_mask], D[cone_mask]
 
-    for prop in prop_names:
-        data = pd.read_csv(f"{prop_loc}/{prop}").values[:]
-        q_coord = data[:,:4]
-        D_prop = data[:,4]
-        D.append(D_prop)
-    
-    # Momentum correction
-    q_hat = np.asarray([gluon.get_qhat(i,(Nt,Ns,Ns,Ns)) for i in q_coord])
-    q = np.asarray([np.linalg.norm(gluon.q_improved(i[1:])) for i in q_hat])
+        elif q.shape[1] == 3 and self.gtype == 'coulomb':
+            cone_mask = []
 
-    D = np.asarray(D)
-     
-    bcd_sig = np.asarray([np.all(coord[1:] == coord[0]) for coord in q_coord]) # Body-centred diagonal mask
-        
-    # Perform time slice averaging
-    if t_avg:
-        print("Averaging time slices...")    
-        
-        D_averaged = []
-        q_averaged = []
-        q_coord_averaged = []
-        
-        for q_ in range(int((Ns//2)**3)):
-            q_averaged.append(q[q_])
-            q_coord_averaged.append(q_coord[q_,1:])
-            D_averaged.append(np.mean(D[:,q_::(Ns//2)**3],axis=1))
-        
-        q = np.asarray(q_averaged)
-        q_coord = np.asarray(q_coord_averaged)
-        D = np.asarray(D_averaged).T
-        
-        bcd_sig = bcd_sig[:int(Ns//2)**3]
-        
-    # Perform cylinder cut
-    if cylinder:
-        print("Performing cylinder cut...")
-        cylinder_mask = []
+            BCD_norm = np.ones(3)/np.linalg.norm(np.ones(3))
 
-        body_norm = np.ones(3)/np.linalg.norm(np.ones(3))
+            for coord in q:
+                if np.all(coord == coord[0]): # Handle on-diagonal coordinates
+                    r = 0
+                else:
+                    q_norm = np.linalg.norm(coord)
+                    theta = np.arccos(np.dot(BCD_norm,coord)/q_norm)
 
-        for coord in q_coord:
-            if np.all(coord == coord[0]): # Handle on-diagonal coordinates
-                r = 0
-            else:
-                q_norm = np.linalg.norm(coord)
-                theta = np.arccos(np.dot(body_norm,coord)/q_norm)
-    
-                r = q_norm * np.sin(theta)
-        
-            cylinder_mask.append(True if r <= c_radius else False)
+                    r = q_norm * np.sin(theta)
 
-        cylinder_mask = np.asarray(cylinder_mask, dtype=bool)
+                cone_mask.append(r <= radius and theta<angle)
 
-        q = q[cylinder_mask]
-        q_coord = q_coord[cylinder_mask,:]
-        D = D[:,cylinder_mask]
-        
-        bcd_sig = bcd_sig[cylinder_mask]
-    
-    # Perform Z3 averaging
-        
-    if Z3_avg:
-        D_averaged = []
-        q_averaged = []
-        
-        bcd_sig = []
-        
-        counter = 0
-        
-        while len(q_coord) > 0:
-            z3_coords = unique_permute(q_coord[0])
-            z3_ids = np.argwhere([np.any(np.all(q_ == z3_coords, axis=1)) for q_ in q_coord]).flatten()
+            cone_mask = np.asarray(cone_mask, dtype=bool)
 
-            bcd_sig.append(True) if len(z3_ids) == 1 else bcd_sig.append(False)
+            self.q = q[cone_mask]
+            self.D = D[cone_mask]
             
-            q_averaged.append(q_coord[0])
-            D_averaged.append(np.mean(D[:,z3_ids],axis=1))
-              
-            q_coord = np.delete(q_coord, z3_ids, axis=0)
-            D = np.delete(D,z3_ids,axis=1)
+            return q[cone_mask], D[cone_mask]
         
-        q_hat = np.asarray([gluon.get_qhat(i,(Ns,Ns,Ns)) for i in np.asarray(q_averaged)])
-        q = np.asarray([np.linalg.norm(gluon.q_improved(i)) for i in q_hat])
+        else:
+            raise Exception("Could not perform cone cut.")
+
+    def half_cut(self, q=None, D=None, cut_t=True):
+        """Cut the momenta half-way through the Brillouin zone."""
         
-        D = np.asarray(D_averaged).T
+        if q == None:
+            q = self.q
+        if D == None:
+            D = self.D
+            
+        cut_mask = np.ones(len(self.q))
         
-        bcd_sig = np.asarray(bcd_sig)
-    
-    if return_info:
-        return q, D, bcd_sig
-    else:
-        return q,D
-    
-if __name__ == "__main__":
-    import sys
-    get_data(*sys.argv[1:])
+        for i in range(1 if cut_t else 0, 3):
+            cut_mask = np.logical_and(cut_mask, q[:,i] <= self.shape[i]//4)
+        
+        self.q = q[cut_mask]
+        self.D = D[cut_mask]
+        
+        return q[cut_mask], D[cut_mask]
+        
+    def Z3_average(self, q, D):
+        """Average over the Z3-permuted coordinates."""
+
+        Nqs = int((self.Ns//2)**3) # Number of spatial points per timeslice
+
+        if self.gtype == "landau":
+            raise Exception("Cannot Z3 average 4D momenta.")
+        
+        if q.shape[1] == 4 and self.gtype == "coulomb":
+
+            z3_partners, z3_sig = get_Z3_partners(q[:Nqs,1:])
+
+            q_averaged = []
+            D_averaged = []
+
+            for t in range(len(q)//Nqs):
+                q_averaged.extend([t,*coord] for coord in q[:,1:][z3_sig])
+                D_averaged.extend([np.mean(D[t*Nqs:(t+1)*Nqs][z3_p]) for z3_p in z3_partners])
+            return np.asarray(q_averaged,dtype=int), np.asarray(D_averaged)
+
+        elif q.shape[1] == 3 and self.gtype == "coulomb":
+            z3_partners, z3_sig = get_Z3_partners(q)
+
+            q_averaged = q[z3_sig]
+            D_averaged = [np.mean(D[z3_p]) for z3_p in z3_partners]
+
+            return np.asarray(q_averaged,dtype=int), np.asarray(D_averaged)
+        else:
+            raise Exception("q must be either 4-dimensional (t,x,y,z) or 3-dimensional (x,y,z).")
+
+    def correct_q(self,q,shape,qtype="wilson"):
+        """Applies the lattice correction to the momentum q."""
+
+        assert qtype in ["wilson","improved"]
+
+        correct_funcs = {"wilson": gluon.q_wilson,
+                         "improved": gluon.q_improved}
+
+        q_qtype = correct_funcs[qtype] # Correction function
+
+        q_corrected = []
+
+        for coord in q:
+            q_corrected.append(q_qtype(gluon.get_qhat(coord,shape)))
+
+        return np.asarray(q_corrected)
