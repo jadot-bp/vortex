@@ -84,7 +84,7 @@ struct gluon_field {
     double complex *U;
 };
 
-void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[]){
+void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[], double complex D4[], int MU_START){
     // Calculate the scalar propagator D in position space
     
     const int Nt = gf -> Nt;
@@ -102,11 +102,12 @@ void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[]){
                 for(int qz=0; qz<Ns/2; qz++){
                     
                     D[counter] = 0.0;
+                    D4[counter] = 0.0;
 
-                    for(int mu=1; mu<Nd; mu++){
+                    for(int mu=MU_START; mu<Nd; mu++){
                         double complex U_pos[Nc][Nc];
                         double complex U_neg[Nc][Nc];
-
+                        
                         // Initialise position at beginning of SU(N) matrix
                         int U_pos_coord[DIM] = {t,qx,qy,qz,mu,0,0};
                         int U_neg_coord[DIM] = {(Nt-t)%Nt,(Ns-qx)%Ns,(Ns-qy)%Ns,(Ns-qz)%Ns,mu,0,0};
@@ -135,7 +136,7 @@ void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[]){
                         
                         trless_conj_subtract(U_pos,U_neg,A);
                         trless_conj_subtract(U_neg,U_pos,A_neg);
- 
+                         
                         scalar_matmul(cexp(-PI*I*U_pos_coord[mu]/Ns)/(2*I), A, A);
                         scalar_matmul(cexp(PI*I*U_pos_coord[mu]/Ns)/(2*I), A_neg, A_neg);
 
@@ -150,16 +151,32 @@ void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[]){
                         for(int i=0; i<8; i++){
                             D[counter] += A_components[i]*A_neg_components[i];
                         }
+                        // Update D4 if mu = 0 for anisotropic Landau
+                        if(mu == 0){
+                            for(int i=0; i<8; i++){
+                                D4[counter] += A_components[i]*A_neg_components[i];
+                            }
+                        }
+                           
                         
                     }// mu loop
                     
                     // Multiply by prefactors:
                     
-                    if(qx+qy+qz < 1){
-                        D[counter] *= 2.0/((Nc*Nc-1)*Nd*Nt*Ns*Ns*Ns);
+                    double prefactor;
+
+                    if(MU_START == 1 && qx+qy+qz < 1){
+                        prefactor = 2.0/((Nc*Nc-1)*Nd*Nt*Ns*Ns*Ns);
+                    }
+                    else if(MU_START == 0 && t+qx+qy+qz < 1){
+                        prefactor = 2.0/((Nc*Nc-1)*Nd*Nt*Ns*Ns*Ns);
                     }else{
-                        D[counter] *= 2.0/((Nc*Nc-1)*(Nd-1)*Nt*Ns*Ns*Ns);
+                        prefactor = 2.0/((Nc*Nc-1)*(Nd-1)*Nt*Ns*Ns*Ns);
                     }                    
+                    D[counter] *= prefactor;
+                    if(MU_START == 0){
+                        D4[counter] *= prefactor;
+                    }
                     
                     counter += 1;
                 }//qz loop
