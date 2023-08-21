@@ -226,6 +226,39 @@ class lattice:
                             
         return divA2/self.V
     
+    def evaluate_divA(self, pattern="coulomb"):
+        """Evaluates the div.A condition over the lattice."""
+    
+        assert pattern in ["coulomb", "landau"]
+        
+        if pattern == "coulomb":
+            XI = 1.0
+            MU_START = 1
+        elif pattern == "landau":
+            MU_START = 0
+            XI = 1/(3.444*4.3) # Lattice anisotropy multiplied by bare gauge anisotropy
+    
+        script_dir = os.path.abspath(os.path.dirname(__file__))
+        lib_path = os.path.join(script_dir, "libgutils.so")
+        
+        c.cdll.LoadLibrary(lib_path)
+    
+        LIB = c.CDLL(lib_path)
+    
+        LIB.evaluate_divA.argtypes = [npc.ndpointer(np.complex128, ndim=None, flags="C_CONTIGUOUS"),
+                                      c.c_int,
+                                      c.c_int,
+                                      c.c_int,
+                                      c.c_int,
+                                      c.c_int,
+                                      c.c_double]
+        
+        LIB.evaluate_divA.restype = c.c_double
+    
+        divA = LIB.evaluate_divA(self.lattice,self.Nt,self.Ns,self.Nd,self.Nc, MU_START, XI)
+        
+        return divA
+    
     def py_evaluate_F(self,pattern="coulomb",T_INDX=0):
         """Evaluates the gauge fixing condition F[U] over the lattice."""
         
