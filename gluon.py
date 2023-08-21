@@ -238,7 +238,7 @@ def py_spatial(Nt,Nc,t0,check_divA=False,calculate_z3=False,return_z3=False,rand
     else:
         return q.real, D_results
 
-def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, regenerate=True):
+def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb'):
     """Calculates the spatial gluon propagator using compiled code.
 
     Parameters:
@@ -249,6 +249,8 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
         check_divA [False]: Calculate the value of |div(A)|^2 for each configuration
         rand_selection [True]: Iterate through configurations randomly when sampling
         save_prop [True]: Save calculated values of the propagator
+        regenerate [True]: Ignore saved propagators and regenerate
+        pattern ['Coulomb']: Gauge fixing
         
     Returns:
         q: Array of coordinates
@@ -260,9 +262,18 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     Ns = 32
     Nd = 4
     Nc = 3
+
+    # End Presets
     
-    gauge_path = f"/home/ben/Work/gauge_confs/transforms"
-    conf_path = f"/home/ben/Work/gauge_confs"
+    gauge_path = f"/home/ben/Work/gauge_confs/transforms/"
+    
+    if pattern == 'landau':
+        gauge_path += '/landau'
+        MU_START = 0
+    else:
+        MU_START = 1
+        
+    conf_path = f"/home/ben/Work/gauge_confs/samples"
     prop_path = f"/home/ben/Work/gauge_confs/props"
     
     # Load gprop library
@@ -277,10 +288,15 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     LIB.calc_mom_space_scalarD.argtypes = [c.POINTER(GluonField),
                                            npc.ndpointer(np.complex128,
                                                          ndim=None,
-                                                         flags="C_CONTIGUOUS")]
+                                                         flags="C_CONTIGUOUS"),
+                                           npc.ndpointer(np.complex128,
+                                                         ndim=None,
+                                                         flags="C_CONTIGUOUS"),
+                                           c.c_int]
     LIB.calc_mom_space_scalarD.restypes = None
 
     D_results = []
+    D4_results = []
 
     available_transforms = []
     
@@ -290,7 +306,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
             available_transforms.append(base_name)
             
     if isinstance(rand_selection,bool) and rand_selection:
-        selection = np.random.choice(available_transforms,size=Nc,replace=False)
+        selection = np.random.choice(available_transforms,size=Nconf,replace=False)
     else:
         selection = rand_selection
     
@@ -311,21 +327,13 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
         input_file = f"{conf_path}/{Nt}x32/{selection[n]}"
         gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
 
-        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop"
-        z3_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop.z3"
+        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau' if pattern == 'landau' else ''}"
         
         file_found = False
         
         if os.path.exists(prop_output) and not regenerate:
             print("Cached file found. Loading...")
             prop = pd.read_csv(prop_output).values[:]
-            q = prop[:,:4]
-            results = prop[:,4]
-            D_results.append(results)
-            file_found = True
-        if os.path.exists(z3_output) and not regenerate:
-            print("Cached Z3 file found. Loading...")
-            prop = pd.read_csv(gauge_output).values[:]
             q = prop[:,:4]
             results = prop[:,4]
             D_results.append(results)
@@ -344,13 +352,14 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
 
             if check_divA:
                 # check divA
-                print("div.A:", gf.py_evaluate_divA())
+                print("div.A:", gf.evaluate_divA(pattern=pattern))
         
             # Transform to Fourier space
             gf.transform(axes=(0, 1, 2, 3))
 
             D_size = int((Nt/2)*(gf.Ns/2)**3)
             D = np.zeros(D_size, dtype='complex128') # Container for scalar propagator
+            D4 = np.zeros(D_size, dtype='complex128')
             
             flattened = gf.lattice.flatten()
             
@@ -361,18 +370,25 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
             gf_struct.Nc = (c.c_int)(gf.Nc)
             gf_struct.U = flattened.ctypes.data_as(c.POINTER(c_double_complex))
 
-            LIB.calc_mom_space_scalarD(gf_struct, D)
+            LIB.calc_mom_space_scalarD(gf_struct, D, D4, MU_START)
 
             D_results.append(D.copy())
+            if pattern == 'landau':
+                D4_results.append(D4.copy())
     
             # Save propagator values
             if save_prop:
                 print("Saving propagator...")
-                out_df = pd.DataFrame(np.hstack([q,D.reshape(-1,1).real]))
-            
-                out_df.to_csv(prop_output,index=None,header=['qt','qx','qy','qz','D(q)_s'])
-    
-    return q, D_results
+                if pattern == "landau":
+                    out_df = pd.DataFrame(np.hstack([q,D.reshape(-1,1).real,D4.reshape(-1,1).real]))    
+                    out_df.to_csv(prop_output,index=None,header=['qt','qx','qy','qz','D(q)_s','D4(q)_s'])
+                if pattern == "landau":
+                    out_df = pd.DataFrame(np.hstack([q,D.reshape(-1,1).real]))    
+                    out_df.to_csv(prop_output,index=None,header=['qt','qx','qy','qz','D(q)_s'])
+    if pattern == 'landau':
+        return q, D_results, D4_results
+    else:
+        return q, D_results
 
 
 if __name__ == "__main__":
