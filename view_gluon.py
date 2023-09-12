@@ -9,6 +9,8 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import scipy.optimize as so
+import scipy.stats as ss
 
 import gluon_utils as gu
 import gluon
@@ -17,6 +19,13 @@ import gvar as gv
 
 __XI_R__ = 3.453
 __XI_0__ = 4.3
+
+def chisq(ydata,yfit,yerr,ddof=1):
+    ydata = np.asarray(ydata)
+    yfit = np.asarray(yfit)
+    yerr = np.asarray(yerr)
+    
+    return np.sum((ydata-yfit)**2 / yerr**2)/ddof
 
 def q_wilson(q_hat, a=1):
     """Calculate the momentum correction corresponding to the Wilson action."""
@@ -28,6 +37,11 @@ def q_improved(q_hat, a=1):
     action."""
 
     return (2/a)*np.sqrt( np.sin(np.asarray(q_hat)*a/2)**2 + (1/3)*np.sin(np.asarray(q_hat)*a/2)**4 )
+
+def get_qhat(coord,shape,a=1):
+        """Calculates q^_\mu"""
+        
+        return (2*np.pi/a)*np.asarray(coord)/np.asarray(shape)
 
 def unique_permute(coord):
     """Return all cyclic permutations of coord."""
@@ -69,9 +83,37 @@ def get_Z3_partners(coords):
         tmp_coords = np.delete(tmp_coords, z3_tmp_ids, axis=0)
     
     return z3_partners, z3_sig
+
+def calculate_gz(p0,q,D):
+    """Calculate the renormalization correction factor g(z)."""
+    p0_mask = q[:,0] == p0
+    norm_p = np.asarray([np.linalg.norm(qp[1:]) for qp in q[p0_mask]])
+    z = p0/norm_p
+    
+    return (1+z**2)*D[p0_mask]/D[q[:,0] == 0]
+
+def calculate_f(q,D,alpha):
+    """Calculate the spatial momentum component f(|p|), given by
+       
+       f(|p|) = 1/N_p0 \sum_p0 D(|p|,p0) (1+z^2)/g(z)
+    
+    """
+    
+    f = 0
+    
+    norm_q = np.asarray([np.linalg.norm(qi[1:]) for qi in q[q[:,0]==0]])
+    
+    for p0 in np.unique(q[:,0]):
+        p0_mask = q[:,0] == p0
         
+        z = p0/norm_q[norm_q!=0]
+        
+        f += D[p0_mask][norm_q!=0] * (1+z**2)**(1-alpha)
+    
+    return f/len(np.unique(q[:,0]))
+
 class propagator:
-    def __init__(self,Nt,n_samples='all',gtype="coulomb",path_to_props=None):
+    def __init__(self,Nt,n_samples='all',gtype="coulomb",path_to_props=None,compress=True):
         """Fetch saved gluon propagator data"""
         
         self.Nt = Nt
@@ -102,20 +144,29 @@ class propagator:
             prop_names = np.random.choice(prop_names, size=n_samples, replace=True)
 
         tmp_D = []
+        tmp_D4 = []
         for prop in prop_names:
             data = pd.read_csv(f"{path_to_props}/{prop}").values[:]
             q_coord = data[:,:4]
             D_prop = data[:,4]
             tmp_D.append(D_prop)
 
-        D = gv.gvar(np.mean(tmp_D,axis=0), np.std(tmp_D,axis=0))
+            if gtype == "landau":
+                D4_prop = data[:,5]
+                tmp_D4.append(D4_prop)
+        
+        if compress:
+            self.D = gv.gvar(np.mean(tmp_D,axis=0), np.std(tmp_D,axis=0))
+        else:
+            self.D = np.asarray(tmp_D)
+
+        if gtype == "landau" and compress:
+            self.D4 = gv.gvar(np.mean(tmp_D4,axis=0), np.std(tmp_D4,axis=0))
+        elif gtype == "landau":
+            self.D4 = np.asarray(tmp_D4)
 
         self.q = q_coord
-        self.D = D
         self.prop_info = prop_names
-
-    def calculate_gz(self, q, D):
-        """Calculate the g-factor for the Coulomb static propagator."""
 
     def cone_cut(self, radius, q=None, D=None,  angle=np.pi/2):
         """Perform a cone cut along the BCD axis of the data."""
@@ -125,7 +176,8 @@ class propagator:
         if D == None:
             D = self.D
         
-        if q.shape[1] == 4 and self.gtype in ['coulomb','landau']:
+        if q.shape[1] == 4 and self.gtype == 'coulomb':
+            # Cone cut over each q_t slice
 
             cone_mask = []
 
@@ -152,6 +204,30 @@ class propagator:
             self.D = D[cone_mask]
             
             return q[cone_mask], D[cone_mask]
+        
+        elif q.shape[1] == 4 and self.gtype == 'landau':
+
+            cone_mask = []
+
+            BCD_norm = np.ones(4)/np.linalg.norm(np.ones(4))
+
+            for coord in q:
+                if np.all(coord == coord[0]): # Handle on-diagonal coordinates
+                    r = 0
+                    theta = 0
+                else:
+                    q_norm = np.linalg.norm(coord)
+                    theta = np.arccos(np.dot(BCD_norm,coord)/q_norm)
+
+                    r = q_norm * np.sin(theta)
+                cone_mask.append(r <= radius and theta<angle)
+
+            cone_mask = np.asarray(cone_mask, dtype=bool)
+
+            self.q = q[cone_mask]
+            self.D = D[cone_mask]
+            
+            return q[cone_mask], D[cone_mask]
 
         elif q.shape[1] == 3 and self.gtype == 'coulomb':
             cone_mask = []
@@ -161,6 +237,7 @@ class propagator:
             for coord in q:
                 if np.all(coord == coord[0]): # Handle on-diagonal coordinates
                     r = 0
+                    theta=0
                 else:
                     q_norm = np.linalg.norm(coord)
                     theta = np.arccos(np.dot(BCD_norm,coord)/q_norm)
@@ -179,7 +256,7 @@ class propagator:
         else:
             raise Exception("Could not perform cone cut.")
 
-    def half_cut(self, q=None, D=None, cut_t=True):
+    def half_cut(self, q=None, D=None):
         """Cut the momenta half-way through the Brillouin zone."""
         
         if q == None:
@@ -189,7 +266,7 @@ class propagator:
             
         cut_mask = np.ones(len(self.q))
         
-        for i in range(1 if cut_t else 0, 3):
+        for i in range(4):
             cut_mask = np.logical_and(cut_mask, q[:,i] <= self.shape[i]//4)
         
         self.q = q[cut_mask]
@@ -227,9 +304,17 @@ class propagator:
         else:
             raise Exception("q must be either 4-dimensional (t,x,y,z) or 3-dimensional (x,y,z).")
 
-    def correct_q(self,q,shape,qtype="wilson"):
+    def correct_q(self,q=None,qtype="wilson"):
         """Applies the lattice correction to the momentum q."""
-
+    
+        if q is None:
+            q = self.q
+        
+        if q.shape[1] == 4:
+            shape=(self.Nt,self.Ns,self.Ns,self.Ns)
+        else:
+            shape=(self.Ns,self.Ns,self.Ns)
+        
         assert qtype in ["wilson","improved"]
 
         correct_funcs = {"wilson": gluon.q_wilson,
@@ -241,5 +326,47 @@ class propagator:
 
         for coord in q:
             q_corrected.append(q_qtype(gluon.get_qhat(coord,shape)))
-
+            
         return np.asarray(q_corrected)
+    
+    def renormalize(self):
+        """Renormalizes the propagator."""
+        
+        if self.gtype == "landau":
+            raise NotImplementedError("not implemented yet")
+            
+        elif self.gtype == "coulomb":
+            
+            # Calculate g(z)
+            
+            gz_fit = lambda x,a: np.asarray(x)**a
+            
+            norm_q = np.asarray([np.linalg.norm(qi[1:]) for qi in self.q[self.q[:,0] == 0]])
+            
+            zfactor = [] # 1+z^2
+            gz = []
+            gz_err = []
+            
+            # Iterate over e-slices
+            for p0 in np.unique(self.q[:,0]):
+                if p0 == 0:
+                    continue # Avoid division by zero
+                    
+                p0_mask = self.q[:,0] == p0
+                p0_gz = calculate_gz(p0,self.q,self.D)
+                    
+                z = p0/norm_q[norm_q!=0]
+                
+                zfactor.extend(1+z**2)
+                gz.extend([pgz.mean for pgz in p0_gz[norm_q!=0]])
+                gz_err.extend([pgz.sdev for pgz in p0_gz[norm_q!=0]])
+                
+            popt, pcov = so.curve_fit(gz_fit, zfactor, gz, sigma=gz_err, absolute_sigma=True)
+            
+            self.alpha = gv.gvar(popt[0],np.sqrt(pcov[0][0]))
+            
+            self.chisq = chisq(gz, gz_fit(zfactor,self.alpha),gz_err,ddof=len(zfactor)-1)
+            
+            f = calculate_f(self.q,self.D,self.alpha)
+            
+            self.f = f
