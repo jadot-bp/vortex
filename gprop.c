@@ -137,8 +137,8 @@ void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[], double c
                         trless_conj_subtract(U_pos,U_neg,A);
                         trless_conj_subtract(U_neg,U_pos,A_neg);
                          
-                        scalar_matmul(cexp(-PI*I*U_pos_coord[mu]/Ns)/(2*I), A, A);
-                        scalar_matmul(cexp(PI*I*U_pos_coord[mu]/Ns)/(2*I), A_neg, A_neg);
+                        scalar_matmul(cexp(-PI*I*U_pos_coord[mu]/U_shape[mu])/(2*I), A, A);
+                        scalar_matmul(cexp(PI*I*U_pos_coord[mu]/U_shape[mu])/(2*I), A_neg, A_neg);
 
                         // Perform color decomposition
                         double complex A_components[8];
@@ -167,8 +167,7 @@ void calc_mom_space_scalarD(struct gluon_field *gf, double complex D[], double c
 
                     if(MU_START == 1 && qx+qy+qz < 1){
                         prefactor = 2.0/((Nc*Nc-1)*Nd*Nt*Ns*Ns*Ns);
-                    }
-                    else if(MU_START == 0 && t+qx+qy+qz < 1){
+                    }else if(MU_START == 0 && t+qx+qy+qz < 1){
                         prefactor = 2.0/((Nc*Nc-1)*Nd*Nt*Ns*Ns*Ns);
                     }else{
                         prefactor = 2.0/((Nc*Nc-1)*(Nd-1)*Nt*Ns*Ns*Ns);
