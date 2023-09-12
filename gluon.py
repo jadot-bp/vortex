@@ -382,7 +382,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
                 if pattern == "landau":
                     out_df = pd.DataFrame(np.hstack([q,D.reshape(-1,1).real,D4.reshape(-1,1).real]))    
                     out_df.to_csv(prop_output,index=None,header=['qt','qx','qy','qz','D(q)_s','D4(q)_s'])
-                if pattern == "landau":
+                else:
                     out_df = pd.DataFrame(np.hstack([q,D.reshape(-1,1).real]))    
                     out_df.to_csv(prop_output,index=None,header=['qt','qx','qy','qz','D(q)_s'])
     if pattern == 'landau':
