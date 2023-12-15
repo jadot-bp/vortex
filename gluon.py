@@ -279,7 +279,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     # Load gprop library
     
     script_dir = os.path.abspath(os.path.dirname(__file__))
-    lib_path = os.path.join(script_dir, "libgprop.so")
+    lib_path = os.path.join(script_dir, "libgprop_xi.so")
 
     c.cdll.LoadLibrary(lib_path)
 
@@ -327,7 +327,7 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
         input_file = f"{conf_path}/{Nt}x32/{selection[n]}"
         gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
 
-        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau' if pattern == 'landau' else ''}"
+        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau.xi' if pattern == 'landau' else ''}"
         
         file_found = False
         
