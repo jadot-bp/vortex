@@ -64,186 +64,14 @@ def unique_permute(coord):
             unique_items.append(item)
             
     return np.asarray(unique_items)
-    
-def py_spatial(Nt,Nc,t0,check_divA=False,calculate_z3=False,return_z3=False,rand_selection=True,save_prop=True, regenerate=True):
-    """Calculates the spatial gluon propagator at time t0.
 
-    Parameters:
-        Nt: Temporal extent
-        Nc: Number of gauge configurations to sample
-        t0: Time slice
-    Optional Parameters:
-        check_divA [False]: Calculate the value of |div(A)|^2 for each configuration
-        calculate_z3 [False]: Calculate the Z3-averaged propagator
-        return_z3 [False]: Return the Z3-averaged propagator instead of the standard
-        rand_selection [True]: Iterate through configurations randomly when sampling
-        save_prop [True]: Save calculated values of the propagator
-        
-    Returns:
-        q: Array of coordinates
-        D_results: Array of propagator values
-    """
-    D_results = []
-
-    available_transforms = []
-    
-    for file in os.listdir(f"../gauge_confs/transforms/{Nt}x32"):
-        if file.endswith(".gauge.lime"):
-            base_name = file.rstrip(".gauge.lime")
-            available_transforms.append(base_name)
-            
-    if rand_selection:
-        selection = np.random.choice(available_transforms,size=Nc,replace=False)
-    else:
-        selection = rand_selection
-    
-    for n in range(Nc):
-        #input_file = "Gen2l_64x32n1.lime"
-        input_file = f"../gauge_confs/samples/{Nt}x32/{selection[n]}"
-        gauge_file = f"../gauge_confs/transforms/{Nt}x32/{selection[n]}.gauge.lime"
-
-        gauge_output = f"../gauge_confs/props/Nt{Nt}/{selection[n]}.prop"
-        z3_output = f"../gauge_confs/props/Nt{Nt}/{selection[n]}.prop.z3"
-        
-        file_found = False
-        
-        if os.path.exists(gauge_output) and not regenerate:
-            print("Cached file found. Loading...")
-            prop = pd.read_csv(gauge_output).values[:]
-            q = prop[:,:4]
-            results = prop[:,4]
-            D_results.append(results)
-            file_found = True
-        if os.path.exists(z3_output) and not regenerate:
-            print("Cached Z3 file found. Loading...")
-            prop = pd.read_csv(gauge_output).values[:]
-            q = prop[:,:4]
-            results = prop[:,4]
-            D_results.append(results)
-            file_found = True
-        
-        if not file_found:
-            print("No cached file found. Generating...")
-        
-            data = io.load(input_file, format="openqcd")
-            gauge = io.load(gauge_file, format="lime")
-
-            gf = gu.lattice(data,(Nt,32,4,3))
-             
-            # Apply gauge transformation
-            gf.apply_gauge(gauge)
-
-            if check_divA:
-                # check divA
-                print("div.A:",gf.py_evaluate_divA())
-        
-            # Transform to Fourier space
-            gf.transform(axes=(0,1,2,3))
-
-            results = []
-            z3_results = []
-            
-            q = []
-            z3_q = []
-        
-            # Loop over t,qx,qy,qz
-
-            for t in range(gf.shape[0]//2):
-                for qx in range(gf.shape[1]//2):
-                    for qy in range(gf.shape[2]//2):
-                        for qz in range(gf.shape[3]//2):
-                            D = []
-                            
-                            # If Z3 averaging, calculate equivalent coordinates
-                            if qz >= qy and qy >= qx and calculate_z3:
-                                coords = unique_permute([qx,qy,qz])
-                            else:
-                                coords = [[qx,qy,qz]]
-
-                            for coord in coords:
-                                # Calculate propagator
-                                
-                                D_sum = 0
-                                for mu in [1,2,3]:
-                                    # Decompose A in terms of Gell-Mann components
-                                    A = gu.decompose_su3(gf.get_A((t,coord[0],coord[1],coord[2]),mu))
-                                    A_neg = gu.decompose_su3(gf.get_A((-t,-coord[0],-coord[1],-coord[2]),mu))
-
-                                    D_sum += np.dot(A,A_neg)
-                                        
-                                D.append(D_sum)
-
-                            # Save results if Z3
-                            if qz >= qy and qy >= qx and calculate_z3:
-                                # Perform Z3 averaging
-                                z3_q.append([t,qx,qy,qz])
-                                z3_results.append(np.sum(D)/len(coords))
-                                
-                                # Retain un-averaged D
-                                q.append([t,qx,qy,qz])
-                                results.append(np.asarray(D)[np.all(coords == [qx,qy,qz],axis=1)][0])
-                            
-                            else:
-                                q.append([t,qx,qy,qz])
-                                results.append(np.sum(D))
-
-            q = np.asarray(q)
-            z3_q = np.asarray(z3_q)
-            
-            results = np.asarray(results)
-            z3_results = np.asarray(z3_results)
-
-            # Multiply propagator by prefactors
-            results_cleaned = []
-            
-            for pos,result in enumerate(results):
-                if np.all(np.asarray(q)[pos] == 0):
-                    results_cleaned.append(result*2/((gf.Nc**2-1)*gf.Nd*gf.V))
-                else:
-                    results_cleaned.append(result*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V))
-
-            results_cleaned = np.asarray(results_cleaned)
-            
-            if calculate_z3:
-                z3_results_cleaned = []
-            
-                for pos,result in enumerate(z3_results):
-                    if np.all(np.asarray(z3_q)[pos] == 0):
-                        z3_results_cleaned.append(result*2/((gf.Nc**2-1)*gf.Nd*gf.V))
-                    else:
-                        z3_results_cleaned.append(result*2/((gf.Nc**2-1)*(gf.Nd-1)*gf.V))
-
-                z3_results_cleaned = np.asarray(z3_results_cleaned)
-            
-            if return_z3:
-                D_results.append(z3_results_cleaned.real)       
-            else:
-                D_results.append(results_cleaned.real)
-            print(f"{input_file} done.")
-        
-            # Save propagator values
-            if save_prop:
-                print("Saving propagator...")
-                out_df = pd.DataFrame(np.hstack([q.real,results_cleaned.reshape(-1,1).real]))
-            
-                out_df.to_csv(gauge_output,index=None,header=['qt','qx','qy','qz','D(q)_s'])
-            if save_prop and calculate_z3:
-                print("Saving Z3-averaged propagator...")
-                out_df = pd.DataFrame(np.hstack([z3_q.real,z3_results_cleaned.reshape(-1,1).real]))
-            
-                out_df.to_csv(z3_output,index=None,header=['qt','qx','qy','qz','z3_D(q)_s'])
-    
-    if return_z3:
-        return z3_q.real, D_results
-    else:
-        return q.real, D_results
-
-def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb'):
+def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb',transform=True):
     """Calculates the spatial gluon propagator using compiled code.
 
     Parameters:
         Nt: Temporal extent
         Nconf: Number of gauge configurations to sample
+        mode: Vortex mode ("VR","VO" or "VOS".)
 
     Optional Parameters:
         check_divA [False]: Calculate the value of |div(A)|^2 for each configuration
@@ -265,15 +93,25 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
 
     # End Presets
     
-    gauge_path = f"/home/ben/Work/gauge_confs/transforms/"
+    modes = {"VO":"vortex-only",
+             "VOS":"vortex-only",
+             "VR":"vortex-removed",
+             "VRS":"vortex-removed",
+             "UT":"full"}
     
+    if isinstance(mode,str) and mode in modes.keys():
+        vmode = modes[mode]
+    else:
+        mode,vmode = list(mode.items())[0]
+        
     if pattern == 'landau':
-        gauge_path += '/landau'
+        gauge_path = f"/home/ben/Work/gauge_confs/transforms/landau/{vmode}"
         MU_START = 0
     else:
-        MU_START = 1
+        gauge_path = f"/home/ben/Work/gauge_confs/transforms/{vmode}"
+        MU_START = 1    
         
-    conf_path = f"/home/ben/Work/gauge_confs/samples"
+    conf_path = f"/home/ben/Work/gauge_confs/confs/{vmode}"
     prop_path = f"/home/ben/Work/gauge_confs/props"
     
     # Load gprop library
@@ -299,20 +137,22 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     D4_results = []
 
     available_transforms = []
+
+    if transform == True:
     
-    for file in os.listdir(f"{gauge_path}/{Nt}x32"):
-        if file.endswith(".gauge.lime"):
-            base_name = file.rstrip(".gauge.lime")
-            available_transforms.append(base_name)
+        for file in os.listdir(f"{gauge_path}/{Nt}x32"):
+            if file.endswith(".gauge.lime"):
+                base_name = file.rstrip(".gauge.lime")
+                available_transforms.append(base_name)
             
-    if isinstance(rand_selection,bool) and rand_selection:
+    if isinstance(rand_selection,bool) and rand_selection and transform:
         selection = np.random.choice(available_transforms,size=Nconf,replace=False)
     else:
         selection = rand_selection
     
-    # Check Nconf bound
+        # Check Nconf bound
     
-    if Nconf > len(available_transforms):
+    if Nconf > len(available_transforms) and transform:
         print(f"Defaulting to max Nconf={len(available_transforms)}")
         Nconf = len(available_transforms)
     
@@ -325,9 +165,11 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
     
     for n in range(Nconf):
         input_file = f"{conf_path}/{Nt}x32/{selection[n]}"
-        gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
+        
+        if transform == True:
+            gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
 
-        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau.xi' if pattern == 'landau' else ''}"
+        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau' if pattern == 'landau' else ''}"
         
         file_found = False
         
@@ -342,13 +184,18 @@ def spatial(Nt, Nconf, check_divA=False, rand_selection=True, save_prop=True, re
         if not file_found:
             print("No cached file found. Generating...")
             print(input_file)
-            data = io.load(input_file, format="openqcd")
-            gauge = io.load(gauge_file, format="lime")
+            
+            data = io.load(input_file, format="openqcd")    
 
             gf = gu.lattice(data,(Nt,Ns,Nd,Nc))
-             
-            # Apply gauge transformation
-            gf.apply_gauge(gauge)
+            
+            
+            if transform == True:
+                #  Load gauge transform
+                gauge = io.load(gauge_file, format="lime")
+                
+                # Apply gauge transformation
+                gf.apply_gauge(gauge)
 
             if check_divA:
                 # check divA
