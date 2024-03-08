@@ -19,6 +19,25 @@ import gvar as gv
 
 __XI_R__ = 3.453
 __XI_0__ = 4.3
+__NF__ = 3
+__NC__ = 3
+
+__dD__ = (39-4*__NF__)/(2*(33-2*__NF__))# See hdl_10894 by T.W, D.L and J-I.S for detail
+
+def logcorr(q,M,dD=__dD__):
+    """The one-loop logarithmic correction to the propagator.
+       See hdl_10894 by T. W, D. L and J-I. S for detail."""
+    
+    return (0.5*np.log((q**2 + M**2)*(1/q**2 + 1/M**2)))**(-dD)
+
+def gribov(q,Z,M):
+    return Z * (q**2/(q**4 + M**4)) * logcorr(q,M)
+
+def stingl(q,Z,A,M):
+    return Z * (q**2/(q**4 + 2 * A**2 * q**2 + M**4)) * logcorr(q,M)
+
+def marezoni(q,Z,A,M):
+    return Z/(q**(2+2*A) + M**2)
 
 def chisq(ydata,yfit,yerr,ddof=1):
     ydata = np.asarray(ydata)
@@ -113,7 +132,7 @@ def calculate_f(q,D,alpha,xi=1):
     return f/len(np.unique(q[:,0]))
 
 class propagator:
-    def __init__(self,Nt,n_samples='all',gtype="coulomb",path_to_props=None,compress=True,xi=1):
+    def __init__(self,Nt,mode,n_samples='all',gtype="coulomb",path_to_props=None,compress=True,xi=1):
         """Fetch saved gluon propagator data"""
         
         self.Nt = Nt
@@ -128,10 +147,21 @@ class propagator:
 
         prop_names = []
 
+        modes = {"VR":"-VR",
+                 "VRS":"-VRS",
+                 "VO":"-VO",
+                 "VOS":"-VOS",
+                 "FULL":"-UT"}
+        
+        if isinstance(mode, str) and mode in modes.keys():
+            vmode = modes[mode]
+        else:
+            vmode = mode
+        
         for prop in os.listdir(path_to_props):
-            if gtype == 'coulomb' and prop.endswith('.prop'):
+            if gtype == 'coulomb' and prop.endswith(f'{vmode}.prop'):
                 prop_names.append(prop)
-            elif gtype == 'landau' and prop.endswith('.prop.landau'):
+            elif gtype == 'landau' and prop.endswith(f'{vmode}.prop.landau'):
                 prop_names.append(prop)
 
         if len(prop_names) < 1:
@@ -170,7 +200,7 @@ class propagator:
         self.q = q_coord
         self.prop_info = prop_names
 
-    def cone_cut(self, radius, q=None, D=None,  angle=np.pi/2, xi=1, cut_t=True,IR_cut=0,IR_radius=0):
+    def cone_cut(self, radius, q=None, D=None, D4=None, angle=np.pi/2, xi=1, cut_t=True,IR_cut=0,IR_radius=0):
         """Perform a cone cut along the BCD axis of the data."""
 
         if IR_radius == 0:
@@ -180,6 +210,8 @@ class propagator:
             q = self.q
         if D == None:
             D = self.D
+        if D4 == None:
+            if self.gtype == "landau": D4 = self.D4
         
         if q.shape[1] == 4 and (self.gtype == 'coulomb' or not cut_t):
             # Cone cut over each q_t slice
@@ -240,8 +272,9 @@ class propagator:
 
             self.q = q[cone_mask]
             self.D = D[cone_mask]
+            self.D4 = D4[cone_mask]
             
-            return q[cone_mask], D[cone_mask]
+            return q[cone_mask], D[cone_mask], D4[cone_mask]
 
         elif q.shape[1] == 3 and self.gtype == 'coulomb':
             cone_mask = []
@@ -367,7 +400,6 @@ class propagator:
                 if p0 == 0:
                     continue # Avoid division by zero
                     
-                p0_mask = self.q[:,0] == p0
                 p0_gz = calculate_gz(p0,self.q,self.D,xi)
                     
                 z = xi*p0/norm_q[norm_q!=0]
@@ -380,7 +412,10 @@ class propagator:
             
             self.alpha = gv.gvar(popt[0],np.sqrt(pcov[0][0]))
             
-            self.chisq = chisq(np.log(gz), gz_fit(np.log(zfactor),self.alpha),np.asarray(gz_err)/np.asarray(gz),ddof=len(zfactor)-1)
+            try:
+                self.chisq = chisq(np.log(gz), gz_fit(np.log(zfactor),self.alpha),np.asarray(gz_err)/np.asarray(gz),ddof=len(zfactor)-1)
+            except:
+                self.chisq = None
             
             f = calculate_f(self.q,self.D,self.alpha,xi)
             
