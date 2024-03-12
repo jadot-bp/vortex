@@ -210,8 +210,8 @@ class propagator:
             q = self.q
         if D == None:
             D = self.D
-        if D4 == None:
-            if self.gtype == "landau": D4 = self.D4
+        if D4 == None and self.gtype == "landau":
+            D4 = self.D4
         
         if q.shape[1] == 4 and (self.gtype == 'coulomb' or not cut_t):
             # Cone cut over each q_t slice
@@ -322,13 +322,31 @@ class propagator:
         
         return q[cut_mask], D[cut_mask]
         
-    def Z3_average(self, q, D):
+    def Z3_average(self, q=None, D=None, D4=None):
         """Average over the Z3-permuted coordinates."""
 
+        if q is None:
+            q = self.q
+        if D is None:
+            D = self.D
+        if D4 is None and self.gtype == "landau":
+            D4 = self.D4
+        
         Nqs = int((self.Ns//2)**3) # Number of spatial points per timeslice
 
-        if self.gtype == "landau":
-            raise Exception("Cannot Z3 average 4D momenta.")
+        if q.shape[1] == 4 and self.gtype == "landau":
+            z3_partners, z3_sig = get_Z3_partners(q[:Nqs,1:])
+
+            q_averaged = []
+            D_averaged = []
+            D4_averaged = []
+
+            for t in range(len(q)//Nqs):
+                q_averaged.extend([t,*coord] for coord in q[:,1:][z3_sig])
+                D_averaged.extend([np.mean(D[t*Nqs:(t+1)*Nqs][z3_p]) for z3_p in z3_partners])
+                D4_averaged.extend([np.mean(D4[t*Nqs:(t+1)*Nqs][z3_p]) for z3_p in z3_partners])
+                
+            return np.asarray(q_averaged,dtype=int), np.asarray(D_averaged), np.asarray(D4_averaged)
         
         if q.shape[1] == 4 and self.gtype == "coulomb":
 
