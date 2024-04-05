@@ -226,7 +226,7 @@ class lattice:
                             
         return divA2/self.V
     
-    def evaluate_divA(self, pattern="coulomb"):
+    def evaluate_divA(self, pattern="coulomb",xi=None):
         """Evaluates the div.A condition over the lattice."""
     
         assert pattern in ["coulomb", "landau"]
@@ -236,7 +236,10 @@ class lattice:
             MU_START = 1
         elif pattern == "landau":
             MU_START = 0
-            XI = 1/(3.444*4.3) # Lattice anisotropy multiplied by bare gauge anisotropy
+            XI = 3.453**2 # Lattice anisotropy
+    
+        if pattern == "landau" and xi != None:
+            XI = xi*xi
     
         script_dir = os.path.abspath(os.path.dirname(__file__))
         lib_path = os.path.join(script_dir, "libgutils.so")
