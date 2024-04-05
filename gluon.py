@@ -169,7 +169,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
         if transform == True:
             gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
 
-        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}.prop{'.landau' if pattern == 'landau' else ''}"
+        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}{f'-UT' if mode == 'UT' else ''}.prop{'.landau' if pattern == 'landau' else ''}"
         
         file_found = False
         
@@ -183,7 +183,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
         
         if not file_found:
             print("No cached file found. Generating...")
-            print(input_file)
+            print(input_file, gauge_file)
             
             data = io.load(input_file, format="openqcd")    
 
@@ -199,7 +199,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
 
             if check_divA:
                 # check divA
-                print("div.A:", gf.evaluate_divA(pattern=pattern))
+                print("div.A:", gf.evaluate_divA(pattern=pattern, xi=3.453))
         
             # Transform to Fourier space
             gf.transform(axes=(0, 1, 2, 3))
