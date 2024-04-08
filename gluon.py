@@ -65,7 +65,7 @@ def unique_permute(coord):
             
     return np.asarray(unique_items)
 
-def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb',transform=True):
+def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb',transform=True):
     """Calculates the spatial gluon propagator using compiled code.
 
     Parameters:
@@ -74,6 +74,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
         mode: Vortex mode ("VR","VO" or "VOS".)
 
     Optional Parameters:
+        xi [1.0]: The lattice anisotropy a_s/a_t
         check_divA [False]: Calculate the value of |div(A)|^2 for each configuration
         rand_selection [True]: Iterate through configurations randomly when sampling
         save_prop [True]: Save calculated values of the propagator
@@ -87,9 +88,9 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
     
     # Presets
     
-    Ns = 32
-    Nd = 4
-    Nc = 3
+    NS = 32
+    ND = 4
+    NC = 3
 
     # End Presets
     
@@ -117,7 +118,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
     # Load gprop library
     
     script_dir = os.path.abspath(os.path.dirname(__file__))
-    lib_path = os.path.join(script_dir, "libgprop_xi.so")
+    lib_path = os.path.join(script_dir, "libgprop.so")
 
     c.cdll.LoadLibrary(lib_path)
 
@@ -130,7 +131,9 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
                                            npc.ndpointer(np.complex128,
                                                          ndim=None,
                                                          flags="C_CONTIGUOUS"),
-                                           c.c_int]
+                                           c.c_int,
+                                           c.c_double]
+    
     LIB.calc_mom_space_scalarD.restypes = None
 
     D_results = []
@@ -159,7 +162,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
     # Generate q array:
     
     qt = np.arange(Nt//2) # Temporal coordinates
-    qs = np.arange(Ns//2) # Spatial coordinates
+    qs = np.arange(NS//2) # Spatial coordinates
     
     q = np.asarray(list(itertools.product(qt,qs,qs,qs)))
     
@@ -187,7 +190,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
             
             data = io.load(input_file, format="openqcd")    
 
-            gf = gu.lattice(data,(Nt,Ns,Nd,Nc))
+            gf = gu.lattice(data,(Nt,NS,ND,NC))
             
             
             if transform == True:
@@ -199,7 +202,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
 
             if check_divA:
                 # check divA
-                print("div.A:", gf.evaluate_divA(pattern=pattern, xi=3.453))
+                print("div.A:", gf.evaluate_divA(pattern=pattern, xi=xi))
         
             # Transform to Fourier space
             gf.transform(axes=(0, 1, 2, 3))
@@ -217,7 +220,7 @@ def spatial(Nt, Nconf, mode, check_divA=False, rand_selection=True, save_prop=Tr
             gf_struct.Nc = (c.c_int)(gf.Nc)
             gf_struct.U = flattened.ctypes.data_as(c.POINTER(c_double_complex))
 
-            LIB.calc_mom_space_scalarD(gf_struct, D, D4, MU_START)
+            LIB.calc_mom_space_scalarD(gf_struct, D, D4, MU_START, xi)
 
             D_results.append(D.copy())
             if pattern == 'landau':
