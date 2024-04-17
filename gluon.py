@@ -109,17 +109,12 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
         vmode = modes[mode]
     else:
         mode,vmode = list(mode.items())[0]
-        
+
     if pattern == 'landau':
-        gauge_path = f"/home/ben/Work/gauge_confs/transforms/landau/{vmode}/{Nt}x32/"
         MU_START = 0
     else:
-        gauge_path = f"/home/ben/Work/gauge_confs/transforms/{vmode}/{Nt}x32/"
         MU_START = 1    
         
-    conf_path = f"/home/ben/Work/gauge_confs/confs/{vmode}/{Nt}x32/"
-    prop_path = f"/home/ben/Work/gauge_confs/props/Nt{Nt}/"
-    
     # Load gprop library
     
     script_dir = os.path.abspath(os.path.dirname(__file__))
