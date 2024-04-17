@@ -17,18 +17,26 @@ import gluon
 
 import gvar as gv
 
-__XI_R__ = 3.453
-__XI_0__ = 4.3
+__XI_R__ = 3.453  # Renormalised anisotropy
+__XI_0__ = 4.3  # Bare gauge anisotropy
 __NF__ = 3
 __NC__ = 3
 
-__dD__ = (39-4*__NF__)/(2*(33-2*__NF__))# See hdl_10894 by T.W, D.L and J-I.S for detail
+__dD__ = (39-4*__NF__)/(2*(33-2*__NF__))# See hep-lat/9809031 by T.W, D.L and J-I.S for detail
+
+## Fitting functions ##
 
 def logcorr(q,M,dD=__dD__):
     """The one-loop logarithmic correction to the propagator.
-       See hdl_10894 by T. W, D. L and J-I. S for detail."""
+       See hep-lat/9809031 by T. W, D. L and J-I. S for detail."""
     
     return (0.5*np.log((q**2 + M**2)*(1/q**2 + 1/M**2)))**(-dD)
+
+def Mq(q,M,L):
+    """The logarithmic mass function defined in hep-lat/9809031
+       to support the fit functions."""
+    
+    return M * (np.log((q**2 * 4*M**2)/L**2)/np.log(4*M**2/L**2))**(-6/11)
 
 def gribov(q,Z,M):
     return Z * (q**2/(q**4 + M**4)) * logcorr(q,M)
@@ -38,6 +46,11 @@ def stingl(q,Z,A,M):
 
 def marezoni(q,Z,A,M):
     return Z/(q**(2+2*A) + M**2)
+
+def cornwall(q,Z,L,M):
+    return Z/((q**2 * Mq(q,M,L)**2) * np.log((q**2 + 4*Mq(q,M,L)**2)/L**2))
+
+## Utility functions ##
 
 def chisq(ydata,yfit,yerr,ddof=1):
     ydata = np.asarray(ydata)
@@ -186,16 +199,16 @@ class propagator:
                 tmp_D4.append(D4_prop)
         
         if compress and gtype == "landau":
-            self.D = gv.gvar(np.mean(np.asarray(tmp_D) + (xi**2-1)*np.asarray(tmp_D4),axis=0), np.std(np.asarray(tmp_D) + (xi**2-1)*np.asarray(tmp_D4),axis=0))
+            self.D = gv.gvar(np.mean(tmp_D,axis=0), np.std(tmp_D,axis=0))
+            self.D4 = gv.gvar(np.mean(tmp_D4,axis=0), np.std(tmp_D4,axis=0))
+            
         elif compress and gtype == "coulomb":
             self.D = gv.gvar(np.mean(tmp_D,axis=0), np.std(tmp_D,axis=0))
+            
         else:
             self.D = np.asarray(tmp_D)
-
-        if gtype == "landau" and compress:
-            self.D4 = gv.gvar(np.mean(tmp_D4,axis=0), np.std(tmp_D4,axis=0))
-        elif gtype == "landau":
-            self.D4 = np.asarray(tmp_D4)
+            if not gtype == "landau":
+                self.D4 = np.asarray(tmp_D4)
 
         self.q = q_coord
         self.prop_info = prop_names
@@ -370,16 +383,29 @@ class propagator:
         else:
             raise Exception("q must be either 4-dimensional (t,x,y,z) or 3-dimensional (x,y,z).")
 
+    def norm_q(self,q=None):
+        """Calculates the Fourier normed-q (q-hat) for the momentum."""
+        
+        if q is None:
+            q = self.q
+            
+        if q.shape[1] == 4:
+            shape=(self.Nt,self.Ns,self.Ns,self.Ns)
+        else:
+            shape=(self.Ns,self.Ns,self.Ns)
+            
+        q_normed = []
+        
+        for coord in q:
+            q_normed.append(get_qhat(coord,shape))
+            
+        return np.asarray(q_normed)
+            
     def correct_q(self,q=None,qtype="wilson"):
         """Applies the lattice correction to the momentum q."""
     
         if q is None:
             q = self.q
-        
-        if q.shape[1] == 4:
-            shape=(self.Nt,self.Ns,self.Ns,self.Ns)
-        else:
-            shape=(self.Ns,self.Ns,self.Ns)
         
         assert qtype in ["wilson","improved"]
 
@@ -391,7 +417,7 @@ class propagator:
         q_corrected = []
 
         for coord in q:
-            q_corrected.append(q_qtype(gluon.get_qhat(coord,shape)))
+            q_corrected.append(q_qtype(coord))
             
         return np.asarray(q_corrected)
     
