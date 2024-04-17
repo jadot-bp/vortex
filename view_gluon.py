@@ -181,9 +181,6 @@ class propagator:
         
         assert gtype in ['coulomb', 'landau']
         
-        if path_to_props == None:
-            path_to_props = f"/home/ben/Work/gauge_confs/props/Nt{Nt}"
-
         prop_names = []
 
         modes = {"VR":"-VR",
