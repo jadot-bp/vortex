@@ -269,7 +269,7 @@ class lattice:
         
         if pattern == "landau":
             mu_coords = [0,1,2,3]
-            xi = 1/(3.444*4.3) # Lattice anisotropy multiplied by bare gauge anisotropy
+            xi = 3.453**2 # Lattice anisotropy multiplied by bare gauge anisotropy
             
         elif pattern == "coulomb":
             mu_coords = [1,2,3]
