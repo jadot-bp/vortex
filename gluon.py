@@ -65,7 +65,8 @@ def unique_permute(coord):
             
     return np.asarray(unique_items)
 
-def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save_prop=True, regenerate=True, pattern='coulomb',transform=True):
+def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save_prop=True, regenerate=True,
+            pattern='coulomb',transform=True,conf_path=None,gauge_path=None,prop_path=None):
     """Calculates the spatial gluon propagator using compiled code.
 
     Parameters:
@@ -80,6 +81,10 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
         save_prop [True]: Save calculated values of the propagator
         regenerate [True]: Ignore saved propagators and regenerate
         pattern ['Coulomb']: Gauge fixing
+        transform [True]: Apply gauge transform according to the gauge fixing pattern
+        conf_path: Path to Gen-2L gauge field configurations.
+        gauge_path: Path to gauge transformations.
+        prop_path: Directory to write propagator files.
         
     Returns:
         q: Array of coordinates
@@ -106,14 +111,14 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
         mode,vmode = list(mode.items())[0]
         
     if pattern == 'landau':
-        gauge_path = f"/home/ben/Work/gauge_confs/transforms/landau/{vmode}"
+        gauge_path = f"/home/ben/Work/gauge_confs/transforms/landau/{vmode}/{Nt}x32/"
         MU_START = 0
     else:
-        gauge_path = f"/home/ben/Work/gauge_confs/transforms/{vmode}"
+        gauge_path = f"/home/ben/Work/gauge_confs/transforms/{vmode}/{Nt}x32/"
         MU_START = 1    
         
-    conf_path = f"/home/ben/Work/gauge_confs/confs/{vmode}"
-    prop_path = f"/home/ben/Work/gauge_confs/props"
+    conf_path = f"/home/ben/Work/gauge_confs/confs/{vmode}/{Nt}x32/"
+    prop_path = f"/home/ben/Work/gauge_confs/props/Nt{Nt}/"
     
     # Load gprop library
     
@@ -143,7 +148,7 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
 
     if transform == True:
     
-        for file in os.listdir(f"{gauge_path}/{Nt}x32"):
+        for file in os.listdir(f"{gauge_path}"):
             if file.endswith(".gauge.lime"):
                 base_name = file.rstrip(".gauge.lime")
                 available_transforms.append(base_name)
@@ -167,12 +172,12 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
     q = np.asarray(list(itertools.product(qt,qs,qs,qs)))
     
     for n in range(Nconf):
-        input_file = f"{conf_path}/{Nt}x32/{selection[n]}"
+        input_file = f"{conf_path}/{selection[n]}"
         
         if transform == True:
-            gauge_file = f"{gauge_path}/{Nt}x32/{selection[n]}.gauge.lime"
+            gauge_file = f"{gauge_path}/{selection[n]}.gauge.lime"
 
-        prop_output = f"{prop_path}/Nt{Nt}/{selection[n]}{f'-UT' if mode == 'UT' else ''}.prop{'.landau' if pattern == 'landau' else ''}"
+        prop_output = f"{prop_path}/{selection[n]}{f'-UT' if mode == 'UT' else ''}.prop{'.landau' if pattern == 'landau' else ''}"
         
         file_found = False
         
