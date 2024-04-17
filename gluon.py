@@ -132,7 +132,7 @@ def spatial(Nt, Nconf, mode, xi=1.0, check_divA=False, rand_selection=True, save
                                                          ndim=None,
                                                          flags="C_CONTIGUOUS"),
                                            c.c_int,
-                                           c.c_double]
+                                           c.c_float]
     
     LIB.calc_mom_space_scalarD.restypes = None
 
