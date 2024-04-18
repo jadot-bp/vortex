@@ -45,36 +45,32 @@ class gribov:
         """Gribov fit"""
         return Z * (q**2/(q**4 + M**4)) * logcorr(q,M)
     
-    def strform():
-        """ String form of Gribov fit"""
-        return "$D(q)=\dfrac{Zq^2}{q^4 + M^4}L(q,M)$"
+    name = "Gribov"
+    strform = "$D(q)=\dfrac{Zq^2}{q^4 + M^4}L(q,M)$"
 
 class stingl:
     def fit(q,Z,A,M):
         """Stingl fit"""
         return Z * (q**2/(q**4 + 2 * A**2 * q**2 + M**4)) * logcorr(q,M)
     
-    def strform():
-        """String form of Stingl fit"""
-        return "$D(q)=\dfrac{Zq^2}{q^4 + 2A^2q^2 + M^4}L(q,M)$"
+    name = "Stingl"
+    strform = "$D(q)=\dfrac{Zq^2}{q^4 + 2A^2q^2 + M^4}L(q,M)$"
     
 class marezoni:
     def fit(q,Z,A,M):
         """Marezoni fit"""
         return Z/(q**(2+2*A) + M**2)
     
-    def strform():
-        """String form of Marezoni fit"""
-        return r"$D(q)=\dfrac{Z}{q^{2(1+\alpha)} + M^2}$"
+    name = "Marezoni"
+    strform = "$D(q)=\dfrac{Z}{q^{2(1+\alpha)} + M^2}$"
     
 class cornwall:
     def fit(q,Z,L,M):
         """Cornwall fit"""
         return Z/((q**2 * Mq(q,M,L)**2) * np.log((q**2 + 4*Mq(q,M,L)**2)/L**2))
     
-    def strform():
-        """String form of Cornwal fit"""
-        return r"$Z\left[(q^2 + M^2(q^2)\mathrm{ln}\dfrac{q^2+4M^2(q^2)}{\Lambda^2})\right]^{-1}$"
+    name = "Cornwall"
+    strform = r"$Z\left[(q^2 + M^2(q^2)\mathrm{ln}\dfrac{q^2+4M^2(q^2)}{\Lambda^2})\right]^{-1}$"
 
 ## Utility functions ##
 
