@@ -179,7 +179,7 @@ class propagator:
             raise Exception("Must specify path to propagator files! This is expected to be in the format:"\
                             "<path_to_props>/Nt<Nt>/<conf>.prop*")
         
-        path_to_props += f"/Nt{Nt}/
+        path_to_props += f"/Nt{Nt}/"
         
         if gtype not in ['coulomb', 'landau']:
             raise Exception("Gauge type must be either 'coulomb' or 'landau'.")
