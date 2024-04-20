@@ -175,7 +175,14 @@ class propagator:
         self.shape = np.asarray([self.Nt,self.Ns,self.Ns,self.Ns])
         self.gtype = gtype
         
-        assert gtype in ['coulomb', 'landau']
+        if path_to_props == None:
+            raise Exception("Must specify path to propagator files! This is expected to be in the format:"\
+                            "<path_to_props>/Nt<Nt>/<conf>.prop*")
+        
+        path_to_props += f"/Nt{Nt}/
+        
+        if gtype not in ['coulomb', 'landau']:
+            raise Exception("Gauge type must be either 'coulomb' or 'landau'.")
         
         prop_names = []
 
